@@ -1,0 +1,78 @@
+# Girder alignment tool - site configuration.
+# The tool NEVER writes to any PV listed here.
+
+epics:
+  # live backend: auto | cothread | pyepics | aa.ca | demo
+  #   auto     = try cothread, then pyepics, then aa.ca
+  #   archiver = LAST RESORT: read values from the Archiver Appliance instead
+  #              of Channel Access. Only for a PC that can reach the archiver
+  #              but not the IOCs. Archived data is deadbanded, decimated and
+  #              seconds late, so following a move on it is poor. Never chosen
+  #              automatically - you have to ask for it.
+  #   On WINDOWS use pyepics: cothread has a C extension with no Windows wheel,
+  #   so pip tries to compile it and fails without MSVC build tools. pyepics is
+  #   pure Python and ships the Channel Access DLLs.
+  live_backend: auto
+
+  # Archiver Appliance (Diamond). aapy's JsonFetcher uses the JSON endpoint.
+  archiver_host: cs03r-cs-vserv-37.diamond.ac.uk
+  archiver_port: 8080
+  archiver_rest_host: archappl6064.diamond.ac.uk
+  archiver_rest_port: 8080
+
+  # Fallback encoder PVs, used for any bay not listed in bay_pv_map below.
+  # The eight encoder ids are fixed by the geometry model.
+  pv_map:
+    V_US_IN:   "TS01C-AL-GIRDR-01:US:Y_IB"
+    V_US_OUT:  "TS01C-AL-GIRDR-01:US:Y_OB"
+    V_DS_IN:   "TS01C-AL-GIRDR-01:DS:Y_IB"
+    V_DS_OUT:  "TS01C-AL-GIRDR-01:DS:Y_OB"
+    SURGE_US:  "TS01C-AL-GIRDR-01:US:Z"
+    SWAY_US:   "TS01C-AL-GIRDR-01:US:X"
+    SURGE_DS:  "TS01C-AL-GIRDR-01:DS:Z"
+    SWAY_DS:   "TS01C-AL-GIRDR-01:DS:X"
+
+  # Each build bay has its OWN encoder rig, so its own PV set.
+  # Bay 1 is commissioned. Bays 2 and 3 follow the same naming pattern but are
+  # not set up yet - fill them in and they take effect immediately.
+  bay_pv_map:
+    "1":
+      V_US_IN:   "TS01C-AL-GIRDR-01:US:Y_IB"
+      V_US_OUT:  "TS01C-AL-GIRDR-01:US:Y_OB"
+      V_DS_IN:   "TS01C-AL-GIRDR-01:DS:Y_IB"
+      V_DS_OUT:  "TS01C-AL-GIRDR-01:DS:Y_OB"
+      SURGE_US:  "TS01C-AL-GIRDR-01:US:Z"
+      SWAY_US:   "TS01C-AL-GIRDR-01:US:X"
+      SURGE_DS:  "TS01C-AL-GIRDR-01:DS:Z"
+      SWAY_DS:   "TS01C-AL-GIRDR-01:DS:X"
+    # "2": {...}   # TODO when bay 2 is commissioned
+    # "3": {...}   # TODO when bay 3 is commissioned
+
+  # optional per-encoder engineering-unit scaling (counts -> mm)
+  scale: {}
+
+# ---------------------------------------------------------------------------
+# Room air temperature. Each bay averages the sensors nearest to it; the
+# subsets overlap.
+# ---------------------------------------------------------------------------
+temperature:
+  sensor_pvs:
+    "01": "TS01C-EA-GIRDR-01:TMON01"
+    "02": "TS01C-EA-GIRDR-01:TMON02"
+    "03": "TS01C-EA-GIRDR-01:TMON03"
+    "04": "TS01C-EA-GIRDR-01:TMON04"
+    "05": "TS01C-EA-GIRDR-01:TMON05"
+    "06": "TS01C-EA-GIRDR-01:TMON06"
+    "07": "TS01C-EA-GIRDR-01:TMON07"
+  bays:
+    "1": ["01", "02", "03"]
+    "2": ["02", "03", "04", "05"]
+    "3": ["04", "05", "06"]
+
+gate:
+  default_mm: 0.010            # per-encoder "on target" gate
+  encoder_resolution_mm: 0.001 # the gate is never allowed finer than this
+
+paths:
+  sessions_db: sessions/sessions.sqlite
+  reports: reports             # default; the operator can change it per report

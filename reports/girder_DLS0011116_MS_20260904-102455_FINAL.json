@@ -1,0 +1,1056 @@
+{
+ "id": "036e9522d245",
+ "serial": "DLS0011116",
+ "gtype": "MS",
+ "operator": "aaa",
+ "bay": "1",
+ "created": "2026-09-04T10:23:17+00:00",
+ "status": "complete",
+ "phase": "complete",
+ "iteration": 2,
+ "step_index": 4,
+ "pairing": "end",
+ "first_idx": 0,
+ "combine_vertical": true,
+ "gate_mm": 0.01,
+ "tol": {
+  "roll": 0.05,
+  "sway": 0.1,
+  "heave": 0.1,
+  "yaw": 0.15,
+  "pitch": 0.15,
+  "surge": 0.2
+ },
+ "geometry_revision": "2026-09-02-r2",
+ "software_version": "2.0.0",
+ "temperature": 21.45549103447699,
+ "notes": "",
+ "initial_err": {
+  "sway": -1.6048737636002538e-06,
+  "heave": -1.0,
+  "surge": -2.2976539635554424e-05,
+  "roll": 6.796225579147391e-17,
+  "pitch": -1.2809929308966565e-18,
+  "yaw": 2.804286529258357e-05
+ },
+ "current_err": {
+  "sway": -1.6048737636306348e-06,
+  "heave": 9.315122445156385e-21,
+  "surge": -2.2976539635555654e-05,
+  "roll": 3.2157525133164317e-19,
+  "pitch": 2.2834201573821605e-20,
+  "yaw": 2.8042865292583567e-05
+ },
+ "plan": {
+  "pairing": "end",
+  "first_idx": 0,
+  "combine_vertical": true,
+  "cross_shift_ratio": 0.04916796063611279,
+  "flatten": {
+   "first": {
+    "label": "U/S",
+    "enc": [
+     "V_US_IN",
+     "V_US_OUT"
+    ],
+    "intermediate": [
+     -1.3030509447238369e-17,
+     4.9794581187062946e-18
+    ],
+    "final": [
+     -2.1827367337626253e-17,
+     1.419263499527061e-17
+    ],
+    "all": {
+     "V_US_IN": -1.3030509447238369e-17,
+     "V_US_OUT": 4.9794581187062946e-18,
+     "V_DS_IN": -9.213126306968574e-18,
+     "V_DS_OUT": 8.796807104047488e-18
+    }
+   },
+   "second": {
+    "label": "D/S",
+    "enc": [
+     "V_DS_IN",
+     "V_DS_OUT"
+    ],
+    "final": [
+     -1.4192607305787894e-17,
+     2.1827326717124406e-17
+    ],
+    "all": {
+     "V_US_IN": -2.1827367337626253e-17,
+     "V_US_OUT": 1.419263499527061e-17,
+     "V_DS_IN": -1.4192607305787894e-17,
+     "V_DS_OUT": 2.1827326717124406e-17
+    }
+   }
+  },
+  "heave": {
+   "first": {
+    "label": "U/S",
+    "enc": [
+     "V_US_IN",
+     "V_US_OUT"
+    ],
+    "intermediate": [
+     -0.9508320382967712,
+     -0.9508320361091345
+    ],
+    "final": [
+     -1.0,
+     -1.0
+    ],
+    "all": {
+     "V_US_IN": -0.9508320382967712,
+     "V_US_OUT": -0.9508320361091345,
+     "V_DS_IN": -0.04916796170324189,
+     "V_DS_OUT": -0.04916796389085443
+    }
+   },
+   "second": {
+    "label": "D/S",
+    "enc": [
+     "V_DS_IN",
+     "V_DS_OUT"
+    ],
+    "final": [
+     -0.9999999999999999,
+     -0.9999999999999997
+    ],
+    "all": {
+     "V_US_IN": -1.0,
+     "V_US_OUT": -1.0,
+     "V_DS_IN": -0.9999999999999999,
+     "V_DS_OUT": -0.9999999999999997
+    }
+   }
+  },
+  "combined": {
+   "first": {
+    "label": "U/S",
+    "enc": [
+     "V_US_IN",
+     "V_US_OUT"
+    ],
+    "intermediate": [
+     -0.9508320382967712,
+     -0.9508320361091345
+    ],
+    "final": [
+     -1.0,
+     -1.0
+    ],
+    "all": {
+     "V_US_IN": -0.9508320382967712,
+     "V_US_OUT": -0.9508320361091345,
+     "V_DS_IN": -0.04916796170324189,
+     "V_DS_OUT": -0.04916796389085443
+    }
+   },
+   "second": {
+    "label": "D/S",
+    "enc": [
+     "V_DS_IN",
+     "V_DS_OUT"
+    ],
+    "final": [
+     -0.9999999999999999,
+     -0.9999999999999997
+    ],
+    "all": {
+     "V_US_IN": -1.0,
+     "V_US_OUT": -1.0,
+     "V_DS_IN": -0.9999999999999999,
+     "V_DS_OUT": -0.9999999999999997
+    }
+   }
+  },
+  "horizontal": {
+   "SURGE_US": 2.297653952338296e-05,
+   "SWAY_US": 9.428655024843193e-05,
+   "SURGE_DS": -2.2976539571389537e-05,
+   "SWAY_DS": -9.10768041423487e-05
+  },
+  "horizontal_after_sway": {
+   "SURGE_US": -1.372968870567697e-12,
+   "SWAY_US": 9.428655024843193e-05,
+   "SURGE_DS": 1.3249622907317251e-12,
+   "SWAY_DS": -9.10768041423487e-05
+  },
+  "steps": [
+   {
+    "id": "combined_first",
+    "group": "combined",
+    "title": "Vertical (flatten + heave) \u2014 U/S pair (move first)",
+    "kind": "vertical",
+    "stage": "first",
+    "targets": {
+     "V_US_IN": -0.9508320382967712,
+     "V_US_OUT": -0.9508320361091345
+    },
+    "final_targets": {
+     "V_US_IN": -1.0,
+     "V_US_OUT": -1.0
+    },
+    "expected": {
+     "V_US_IN": -0.9508320382967712,
+     "V_US_OUT": -0.9508320361091345,
+     "V_DS_IN": -0.04916796170324189,
+     "V_DS_OUT": -0.04916796389085443,
+     "SURGE_US": 0.0,
+     "SWAY_US": 0.0,
+     "SURGE_DS": 0.0,
+     "SWAY_DS": 0.0
+    },
+    "note": "stop at the intermediate value \u2014 it settles to final once the second pair moves",
+    "index": 0,
+    "monitors": [
+     "V_DS_IN",
+     "V_DS_OUT",
+     "SURGE_US",
+     "SWAY_US",
+     "SURGE_DS",
+     "SWAY_DS"
+    ]
+   },
+   {
+    "id": "combined_second",
+    "group": "combined",
+    "title": "Vertical (flatten + heave) \u2014 D/S pair (move last)",
+    "kind": "vertical",
+    "stage": "second",
+    "targets": {
+     "V_DS_IN": -0.9999999999999999,
+     "V_DS_OUT": -0.9999999999999997
+    },
+    "final_targets": {
+     "V_DS_IN": -0.9999999999999999,
+     "V_DS_OUT": -0.9999999999999997
+    },
+    "expected": {
+     "V_US_IN": -1.0,
+     "V_US_OUT": -1.0,
+     "V_DS_IN": -0.9999999999999999,
+     "V_DS_OUT": -0.9999999999999997,
+     "SURGE_US": 0.0,
+     "SWAY_US": 0.0,
+     "SURGE_DS": 0.0,
+     "SWAY_DS": 0.0
+    },
+    "note": "final targets",
+    "index": 1,
+    "monitors": [
+     "V_US_IN",
+     "V_US_OUT",
+     "SURGE_US",
+     "SWAY_US",
+     "SURGE_DS",
+     "SWAY_DS"
+    ]
+   },
+   {
+    "id": "sway",
+    "group": "horizontal",
+    "title": "Horizontal 1 \u2014 sway and yaw",
+    "kind": "horizontal",
+    "stage": "sway",
+    "targets": {
+     "SWAY_US": 9.428655024843193e-05,
+     "SWAY_DS": -9.10768041423487e-05
+    },
+    "final_targets": {
+     "SWAY_US": 9.428655024843193e-05,
+     "SWAY_DS": -9.10768041423487e-05
+    },
+    "expected": {
+     "V_US_IN": -1.0,
+     "V_US_OUT": -1.0,
+     "V_DS_IN": -0.9999999999999999,
+     "V_DS_OUT": -0.9999999999999997,
+     "SURGE_US": -1.372968870567697e-12,
+     "SWAY_US": 9.428655024843193e-05,
+     "SURGE_DS": 1.3249622907317251e-12,
+     "SWAY_DS": -9.10768041423487e-05
+    },
+    "note": "sets sway and yaw together (differential X) \u2014 absorbs the roll-induced lateral creep. Independent of surge, so the order between the two horizontal steps does not matter.",
+    "index": 2,
+    "monitors": [
+     "V_US_IN",
+     "V_US_OUT",
+     "V_DS_IN",
+     "V_DS_OUT",
+     "SURGE_US",
+     "SURGE_DS"
+    ]
+   },
+   {
+    "id": "surge",
+    "group": "horizontal",
+    "title": "Horizontal 2 \u2014 surge",
+    "kind": "horizontal",
+    "stage": "surge",
+    "targets": {
+     "SURGE_US": 2.297653952338296e-05,
+     "SURGE_DS": -2.2976539571389537e-05
+    },
+    "final_targets": {
+     "SURGE_US": 2.297653952338296e-05,
+     "SURGE_DS": -2.2976539571389537e-05
+    },
+    "expected": {
+     "V_US_IN": -1.0,
+     "V_US_OUT": -1.0,
+     "V_DS_IN": -0.9999999999999999,
+     "V_DS_OUT": -0.9999999999999997,
+     "SURGE_US": 2.297653952338296e-05,
+     "SWAY_US": 9.428655024843193e-05,
+     "SURGE_DS": -2.2976539571389537e-05,
+     "SWAY_DS": -9.10768041423487e-05
+    },
+    "note": "both ends together \u2014 watch STRETCH; driving one end alone lets the girder ride up the far spherical bearing",
+    "index": 3,
+    "monitors": [
+     "V_US_IN",
+     "V_US_OUT",
+     "V_DS_IN",
+     "V_DS_OUT",
+     "SWAY_US",
+     "SWAY_DS"
+    ]
+   }
+  ]
+ },
+ "surveys": [
+  {
+   "iteration": 1,
+   "t": "2026-09-04T10:23:22+00:00",
+   "source": "upload",
+   "filename": "MS_REF_PTS_-1mm_VERT.csv",
+   "n_uploaded": 9,
+   "temperature": 21.474920197676116,
+   "temperature_detail": {
+    "bay": "1",
+    "sensors_used": 3,
+    "sensors_total": 3,
+    "temperature": 21.474920197676116,
+    "spread": 0.10000000000000142,
+    "sensors": {
+     "01": {
+      "pv": "TS01C-EA-GIRDR-01:TMON01",
+      "value": 21.423082138334145,
+      "timestamp": 1788517402.990645,
+      "connected": true,
+      "error": null,
+      "age": 0.0,
+      "stale": false
+     },
+     "02": {
+      "pv": "TS01C-EA-GIRDR-01:TMON02",
+      "value": 21.478596316360065,
+      "timestamp": 1788517402.990645,
+      "connected": true,
+      "error": null,
+      "age": 0.0,
+      "stale": false
+     },
+     "03": {
+      "pv": "TS01C-EA-GIRDR-01:TMON03",
+      "value": 21.523082138334146,
+      "timestamp": 1788517402.990645,
+      "connected": true,
+      "error": null,
+      "age": 0.0,
+      "stale": false
+     }
+    },
+    "health": "ok",
+    "failed": [],
+    "demo": true,
+    "error": null
+   },
+   "fit": {
+    "rms": 8.645922493968495e-05,
+    "max": 0.00013956728291057696,
+    "n": 9,
+    "residuals": {
+     "APNT26": 0.00011793843552348899,
+     "APNT27": 0.00013956728291057696,
+     "APNT28": 2.8410998224519504e-05,
+     "APNT29": 4.821305544098186e-05,
+     "APNT30": 2.303251129974691e-05,
+     "APNT31": 9.824266404707325e-05,
+     "APNT32": 7.361281655930018e-05,
+     "APNT33": 7.577759284298883e-05,
+     "APNT34": 9.702260392295852e-05
+    },
+    "warnings": []
+   },
+   "err": {
+    "sway": -1.6048737636002538e-06,
+    "heave": -1.0,
+    "surge": -2.2976539635554424e-05,
+    "roll": 6.796225579147391e-17,
+    "pitch": -1.2809929308966565e-18,
+    "yaw": 2.804286529258357e-05
+   },
+   "points": [
+    [
+     -403.092,
+     -451.0,
+     1365.051
+    ],
+    [
+     368.788,
+     -451.0,
+     1365.881
+    ],
+    [
+     -475.378,
+     -451.0,
+     2383.066
+    ],
+    [
+     422.361,
+     -451.0,
+     2446.812
+    ],
+    [
+     -217.747,
+     -451.0,
+     5108.158
+    ],
+    [
+     -857.855,
+     -451.0,
+     7769.504
+    ],
+    [
+     39.885,
+     -451.0,
+     7833.25
+    ],
+    [
+     -166.001,
+     -451.0,
+     8897.345
+    ],
+    [
+     -930.731,
+     -451.0,
+     8795.83
+    ]
+   ],
+   "matched": {
+    "APNT26": [
+     -403.092,
+     -451.0,
+     1365.051
+    ],
+    "APNT27": [
+     368.788,
+     -451.0,
+     1365.881
+    ],
+    "APNT28": [
+     -475.378,
+     -451.0,
+     2383.066
+    ],
+    "APNT29": [
+     422.361,
+     -451.0,
+     2446.812
+    ],
+    "APNT30": [
+     -217.747,
+     -451.0,
+     5108.158
+    ],
+    "APNT31": [
+     -857.855,
+     -451.0,
+     7769.504
+    ],
+    "APNT32": [
+     39.885,
+     -451.0,
+     7833.25
+    ],
+    "APNT33": [
+     -166.001,
+     -451.0,
+     8897.345
+    ],
+    "APNT34": [
+     -930.731,
+     -451.0,
+     8795.83
+    ]
+   },
+   "assessment": {
+    "axes": {
+     "roll": {
+      "value": 6.796225579147391e-17,
+      "tol": 0.05,
+      "frac": 1.359245115829478e-15,
+      "status": "ok"
+     },
+     "sway": {
+      "value": -1.6048737636002538e-06,
+      "tol": 0.1,
+      "frac": 1.6048737636002538e-05,
+      "status": "ok"
+     },
+     "heave": {
+      "value": -1.0,
+      "tol": 0.1,
+      "frac": 10.0,
+      "status": "bad"
+     },
+     "yaw": {
+      "value": 2.804286529258357e-05,
+      "tol": 0.15,
+      "frac": 0.00018695243528389047,
+      "status": "ok"
+     },
+     "pitch": {
+      "value": -1.2809929308966565e-18,
+      "tol": 0.15,
+      "frac": 8.539952872644376e-18,
+      "status": "ok"
+     },
+     "surge": {
+      "value": -2.2976539635554424e-05,
+      "tol": 0.2,
+      "frac": 0.00011488269817777211,
+      "status": "ok"
+     }
+    },
+    "peak_frac": 10.0,
+    "in_tolerance": false
+   }
+  },
+  {
+   "iteration": 2,
+   "t": "2026-09-04T10:24:52+00:00",
+   "source": "upload",
+   "filename": "MS_REF_PTS.csv",
+   "n_uploaded": 9,
+   "temperature": 21.45549103447699,
+   "temperature_detail": {
+    "bay": "1",
+    "sensors_used": 3,
+    "sensors_total": 3,
+    "temperature": 21.45549103447699,
+    "spread": 0.10000000000000142,
+    "sensors": {
+     "01": {
+      "pv": "TS01C-EA-GIRDR-01:TMON01",
+      "value": 21.396610867855856,
+      "timestamp": 1788517492.191561,
+      "connected": true,
+      "error": null,
+      "age": 0.0,
+      "stale": false
+     },
+     "02": {
+      "pv": "TS01C-EA-GIRDR-01:TMON02",
+      "value": 21.473251367719257,
+      "timestamp": 1788517492.191561,
+      "connected": true,
+      "error": null,
+      "age": 0.0,
+      "stale": false
+     },
+     "03": {
+      "pv": "TS01C-EA-GIRDR-01:TMON03",
+      "value": 21.496610867855857,
+      "timestamp": 1788517492.191561,
+      "connected": true,
+      "error": null,
+      "age": 0.0,
+      "stale": false
+     }
+    },
+    "health": "ok",
+    "failed": [],
+    "demo": true,
+    "error": null
+   },
+   "fit": {
+    "rms": 8.645922493968495e-05,
+    "max": 0.00013956728291057694,
+    "n": 9,
+    "residuals": {
+     "APNT26": 0.00011793843552348893,
+     "APNT27": 0.00013956728291057694,
+     "APNT28": 2.8410998224524017e-05,
+     "APNT29": 4.821305544098479e-05,
+     "APNT30": 2.3032511299747084e-05,
+     "APNT31": 9.824266404707174e-05,
+     "APNT32": 7.361281655929833e-05,
+     "APNT33": 7.57775928429891e-05,
+     "APNT34": 9.702260392295855e-05
+    },
+    "warnings": []
+   },
+   "err": {
+    "sway": -1.6048737636306348e-06,
+    "heave": 9.315122445156385e-21,
+    "surge": -2.2976539635555654e-05,
+    "roll": 3.2157525133164317e-19,
+    "pitch": 2.2834201573821605e-20,
+    "yaw": 2.8042865292583567e-05
+   },
+   "points": [
+    [
+     -403.092,
+     -450.0,
+     1365.051
+    ],
+    [
+     368.788,
+     -450.0,
+     1365.881
+    ],
+    [
+     -475.378,
+     -450.0,
+     2383.066
+    ],
+    [
+     422.361,
+     -450.0,
+     2446.812
+    ],
+    [
+     -217.747,
+     -450.0,
+     5108.158
+    ],
+    [
+     -857.855,
+     -450.0,
+     7769.504
+    ],
+    [
+     39.885,
+     -450.0,
+     7833.25
+    ],
+    [
+     -166.001,
+     -450.0,
+     8897.345
+    ],
+    [
+     -930.731,
+     -450.0,
+     8795.83
+    ]
+   ],
+   "matched": {
+    "APNT26": [
+     -403.092,
+     -450.0,
+     1365.051
+    ],
+    "APNT27": [
+     368.788,
+     -450.0,
+     1365.881
+    ],
+    "APNT28": [
+     -475.378,
+     -450.0,
+     2383.066
+    ],
+    "APNT29": [
+     422.361,
+     -450.0,
+     2446.812
+    ],
+    "APNT30": [
+     -217.747,
+     -450.0,
+     5108.158
+    ],
+    "APNT31": [
+     -857.855,
+     -450.0,
+     7769.504
+    ],
+    "APNT32": [
+     39.885,
+     -450.0,
+     7833.25
+    ],
+    "APNT33": [
+     -166.001,
+     -450.0,
+     8897.345
+    ],
+    "APNT34": [
+     -930.731,
+     -450.0,
+     8795.83
+    ]
+   },
+   "assessment": {
+    "axes": {
+     "roll": {
+      "value": 3.2157525133164317e-19,
+      "tol": 0.05,
+      "frac": 6.431505026632863e-18,
+      "status": "ok"
+     },
+     "sway": {
+      "value": -1.6048737636306348e-06,
+      "tol": 0.1,
+      "frac": 1.6048737636306348e-05,
+      "status": "ok"
+     },
+     "heave": {
+      "value": 9.315122445156385e-21,
+      "tol": 0.1,
+      "frac": 9.315122445156384e-20,
+      "status": "ok"
+     },
+     "yaw": {
+      "value": 2.8042865292583567e-05,
+      "tol": 0.15,
+      "frac": 0.00018695243528389044,
+      "status": "ok"
+     },
+     "pitch": {
+      "value": 2.2834201573821605e-20,
+      "tol": 0.15,
+      "frac": 1.5222801049214403e-19,
+      "status": "ok"
+     },
+     "surge": {
+      "value": -2.2976539635555654e-05,
+      "tol": 0.2,
+      "frac": 0.00011488269817777826,
+      "status": "ok"
+     }
+    },
+    "peak_frac": 0.00018695243528389044,
+    "in_tolerance": true
+   }
+  }
+ ],
+ "moves": [
+  {
+   "t": "2026-09-04T10:24:12+00:00",
+   "iteration": 1,
+   "step": "combined_first",
+   "title": "Vertical (flatten + heave) \u2014 U/S pair (move first)",
+   "kind": "vertical",
+   "targets": {
+    "V_US_IN": -0.9508320382967712,
+    "V_US_OUT": -0.9508320361091345
+   },
+   "achieved": {
+    "V_US_IN": -0.9494038588629926,
+    "V_US_OUT": -0.949632688918936
+   },
+   "all_encoders": {
+    "V_US_IN": -0.9494038588629926,
+    "V_US_OUT": -0.949632688918936,
+    "V_DS_IN": -0.04891812048823813,
+    "V_DS_OUT": -0.04955186031813188,
+    "SURGE_US": -4.162913335819531e-05,
+    "SWAY_US": 0.0003047474599441043,
+    "SURGE_DS": -0.00036289831162464824,
+    "SWAY_DS": -0.0003134500362298077
+   },
+   "errors": {
+    "V_US_IN": 0.001428179433778598,
+    "V_US_OUT": 0.0011993471901984298
+   },
+   "warp": -0.00022782383856254085,
+   "stretch": 0.00026627952923252707,
+   "gate_mm": 0.01,
+   "override": false,
+   "override_reason": "",
+   "override_by": "aaa",
+   "predicted_pose_change": {
+    "sway": -4.351285480296852e-06,
+    "heave": 0.4993766364880096,
+    "surge": 0.00016063459361997755,
+    "roll": 0.0008136626705532292,
+    "pitch": 0.15105425030051023,
+    "yaw": -9.352457591704777e-05
+   }
+  },
+  {
+   "t": "2026-09-04T10:24:32+00:00",
+   "iteration": 1,
+   "step": "combined_second",
+   "title": "Vertical (flatten + heave) \u2014 D/S pair (move last)",
+   "kind": "vertical",
+   "targets": {
+    "V_DS_IN": -0.9999999999999999,
+    "V_DS_OUT": -0.9999999999999997
+   },
+   "achieved": {
+    "V_DS_IN": -0.9974991401411065,
+    "V_DS_OUT": -0.9970050906282047
+   },
+   "all_encoders": {
+    "V_US_IN": -0.9997737495652479,
+    "V_US_OUT": -0.9998399485439489,
+    "V_DS_IN": -0.9974991401411065,
+    "V_DS_OUT": -0.9970050906282047,
+    "SURGE_US": -9.389195376360588e-05,
+    "SWAY_US": 4.2465982153760536e-05,
+    "SURGE_DS": 1.4636917857674875e-05,
+    "SWAY_DS": 0.00023025581547291257
+   },
+   "errors": {
+    "V_DS_IN": 0.0025008598588933673,
+    "V_DS_OUT": 0.0029949093717949182
+   },
+   "warp": -0.00012286891128946968,
+   "stretch": -0.00025790234824189166,
+   "gate_mm": 0.01,
+   "override": false,
+   "override_reason": "",
+   "override_by": "aaa",
+   "predicted_pose_change": {
+    "sway": 0.00013636089800256963,
+    "heave": 0.9985294822123615,
+    "surge": -5.426443720145329e-05,
+    "roll": -0.0004036326382114245,
+    "pitch": 0.0004286466037636424,
+    "yaw": 2.8409957386621443e-05
+   }
+  },
+  {
+   "t": "2026-09-04T10:24:36+00:00",
+   "iteration": 1,
+   "step": "sway",
+   "title": "Horizontal 1 \u2014 sway and yaw",
+   "kind": "horizontal",
+   "targets": {
+    "SWAY_US": 9.428655024843193e-05,
+    "SWAY_DS": -9.10768041423487e-05
+   },
+   "achieved": {
+    "SWAY_US": -0.00035363502989075636,
+    "SWAY_DS": -0.0005074818721581469
+   },
+   "all_encoders": {
+    "V_US_IN": -0.9997947697062287,
+    "V_US_OUT": -1.0001734062371728,
+    "V_DS_IN": -0.9996451258778298,
+    "V_DS_OUT": -0.999919905688632,
+    "SURGE_US": -0.0003264568239177869,
+    "SWAY_US": -0.00035363502989075636,
+    "SURGE_DS": 3.7061696428216948e-06,
+    "SWAY_DS": -0.0005074818721581469
+   },
+   "errors": {
+    "SWAY_US": -0.0004479215801391883,
+    "SWAY_DS": -0.0004164050680157982
+   },
+   "warp": -0.00023398817420083754,
+   "stretch": 5.481717676110201e-06,
+   "gate_mm": 0.01,
+   "override": false,
+   "override_reason": "",
+   "override_by": "aaa",
+   "predicted_pose_change": {
+    "sway": -0.0004305584503632958,
+    "heave": 0.9998833019080253,
+    "surge": -0.0001650814956849139,
+    "roll": 0.0006164310818189241,
+    "pitch": 3.3820850933023525e-05,
+    "yaw": -2.3274860816435705e-05
+   }
+  },
+  {
+   "t": "2026-09-04T10:24:40+00:00",
+   "iteration": 1,
+   "step": "surge",
+   "title": "Horizontal 2 \u2014 surge",
+   "kind": "horizontal",
+   "targets": {
+    "SURGE_US": 2.297653952338296e-05,
+    "SURGE_DS": -2.2976539571389537e-05
+   },
+   "achieved": {
+    "SURGE_US": -0.00010016790470146985,
+    "SURGE_DS": 0.0003839369862765658
+   },
+   "all_encoders": {
+    "V_US_IN": -0.9997322743715277,
+    "V_US_OUT": -0.9995858911753892,
+    "V_DS_IN": -1.0006358181546875,
+    "V_DS_OUT": -0.9998857184566957,
+    "SURGE_US": -0.00010016790470146985,
+    "SWAY_US": -0.00015016681632427424,
+    "SURGE_DS": 0.0003839369862765658,
+    "SWAY_DS": 0.0002555869164656226
+   },
+   "errors": {
+    "SURGE_US": -0.0001231444442248528,
+    "SURGE_DS": 0.00040691352584795536
+   },
+   "warp": 0.00012071072703731655,
+   "stretch": -0.0003417748169498508,
+   "gate_mm": 0.01,
+   "override": false,
+   "override_reason": "",
+   "override_by": "aaa",
+   "predicted_pose_change": {
+    "sway": 5.2710048320790865e-05,
+    "heave": 0.9999599254959605,
+    "surge": -0.00024205244846614603,
+    "roll": -0.0008457386648774288,
+    "pitch": -0.00010095397061153488,
+    "yaw": 6.13848261110661e-05
+   },
+   "model_check": {
+    "predicted": {
+     "sway": 5.2710048320790865e-05,
+     "heave": 0.9999599254959605,
+     "surge": -0.00024205244846614603,
+     "roll": -0.0008457386648774288,
+     "pitch": -0.00010095397061153488,
+     "yaw": 6.13848261110661e-05
+    },
+    "actual": {
+     "sway": -3.038095423564362e-17,
+     "heave": 1.0,
+     "surge": -1.229891839413244e-18,
+     "roll": -6.764068054014227e-17,
+     "pitch": 1.3038271324704781e-18,
+     "yaw": -3.3881317890172014e-21
+    },
+    "residual": {
+     "sway": -5.2710048320821243e-05,
+     "heave": 4.007450403953339e-05,
+     "surge": 0.00024205244846614481,
+     "roll": 0.0008457386648773611,
+     "pitch": 0.00010095397061153618,
+     "yaw": -6.13848261110661e-05
+    }
+   }
+  }
+ ],
+ "overrides": [],
+ "events": [
+  {
+   "t": "2026-09-04T10:23:17+00:00",
+   "kind": "session_start",
+   "serial": "DLS0011116",
+   "gtype": "MS",
+   "operator": "aaa",
+   "bay": "1",
+   "geometry_revision": "2026-09-02-r2",
+   "software_version": "2.0.0"
+  },
+  {
+   "t": "2026-09-04T10:23:22+00:00",
+   "kind": "survey",
+   "iteration": 1,
+   "rms": 8.645922493968495e-05,
+   "n": 9,
+   "warnings": [],
+   "err": {
+    "sway": -1.6048737636002538e-06,
+    "heave": -1.0,
+    "surge": -2.2976539635554424e-05,
+    "roll": 6.796225579147391e-17,
+    "pitch": -1.2809929308966565e-18,
+    "yaw": 2.804286529258357e-05
+   }
+  },
+  {
+   "t": "2026-09-04T10:23:22+00:00",
+   "kind": "solve",
+   "n_steps": 4,
+   "combine_vertical": true,
+   "pairing": "end"
+  },
+  {
+   "t": "2026-09-04T10:23:29+00:00",
+   "kind": "encoder_zero",
+   "action": "set",
+   "encoders": "all",
+   "values": {
+    "V_US_IN": -7.298138707761429e-05,
+    "V_US_OUT": 0.00024623325548287563,
+    "V_DS_IN": -0.00028213006830164625,
+    "V_DS_OUT": 0.0007031475544267166,
+    "SURGE_US": 0.0004423314048256226,
+    "SWAY_US": 1.2521240493538804e-05,
+    "SURGE_DS": -3.3069250439918035e-06,
+    "SWAY_DS": 0.0003685464209432027
+   }
+  },
+  {
+   "t": "2026-09-04T10:24:12+00:00",
+   "kind": "step_complete",
+   "step": "combined_first",
+   "override": false
+  },
+  {
+   "t": "2026-09-04T10:24:32+00:00",
+   "kind": "step_complete",
+   "step": "combined_second",
+   "override": false
+  },
+  {
+   "t": "2026-09-04T10:24:36+00:00",
+   "kind": "step_complete",
+   "step": "sway",
+   "override": false
+  },
+  {
+   "t": "2026-09-04T10:24:40+00:00",
+   "kind": "step_complete",
+   "step": "surge",
+   "override": false
+  },
+  {
+   "t": "2026-09-04T10:24:45+00:00",
+   "kind": "report",
+   "pdf": "C:\\Users\\slb00294\\OneDrive - Diamond Light Source Ltd\\Documents\\Python\\Girder Alignment Tool\\girder_align_v2\\girder_align\\reports\\girder_DLS0011116_MS_20260904-102445_PARTIAL.pdf",
+   "partial": true
+  },
+  {
+   "t": "2026-09-04T10:24:52+00:00",
+   "kind": "survey",
+   "iteration": 2,
+   "rms": 8.645922493968495e-05,
+   "n": 9,
+   "warnings": [],
+   "err": {
+    "sway": -1.6048737636306348e-06,
+    "heave": 9.315122445156385e-21,
+    "surge": -2.2976539635555654e-05,
+    "roll": 3.2157525133164317e-19,
+    "pitch": 2.2834201573821605e-20,
+    "yaw": 2.8042865292583567e-05
+   }
+  },
+  {
+   "t": "2026-09-04T10:24:52+00:00",
+   "kind": "converged",
+   "err": {
+    "sway": -1.6048737636306348e-06,
+    "heave": 9.315122445156385e-21,
+    "surge": -2.2976539635555654e-05,
+    "roll": 3.2157525133164317e-19,
+    "pitch": 2.2834201573821605e-20,
+    "yaw": 2.8042865292583567e-05
+   }
+  }
+ ],
+ "partial": false,
+ "generated": "2026-09-04T10:24:55+00:00"
+}

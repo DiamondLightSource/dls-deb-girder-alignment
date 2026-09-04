@@ -1,0 +1,41 @@
+# Girder Alignment Tool — Python dependencies
+#
+#   pip install -r requirements.txt
+#
+# Everything here installs on Windows and Linux with no compiler.
+# (cothread is deliberately NOT included — see the note at the bottom.)
+
+# --- core ------------------------------------------------------------------
+flask>=2.0             # local web service
+numpy>=1.21            # alignment maths: Jacobian, pose fit, planner
+reportlab>=3.6         # PDF report + the plan/end drawings
+PyYAML>=5.4            # config.yaml
+
+# --- live EPICS (Channel Access) -------------------------------------------
+# pyepics is pure Python and ships the CA client DLLs, so it works on Windows
+# and Linux without a build toolchain. This is what reads the encoders live.
+pyepics>=3.5
+
+# --- archiver (history traces in the report, PV name lookup) ---------------
+# Installs as 'aapy', imports as 'aa'. Pulls in requests, pytz, tzlocal.
+aapy>=0.12
+
+# aapy's generated protobuf code predates the protobuf 4.x API and fails with
+#   TypeError: Descriptors cannot be created directly
+# 3.20.3 is a pure-Python wheel, so this pin needs no compiler on any Python.
+# Alternative, if something else in your environment needs newer protobuf:
+# drop this line and instead set, before starting the server,
+#   PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
+protobuf<3.21
+
+# --- Windows only ----------------------------------------------------------
+# Windows ships no IANA timezone database, so zoneinfo raises without this.
+tzdata; platform_system == "Windows"
+
+# --- optional: Linux only --------------------------------------------------
+# cothread is Diamond's usual CA library, but it has a C extension and
+# publishes no Windows wheel, so on Windows pip tries to compile it and fails
+# with "Microsoft Visual C++ 14.0 or greater is required".
+# You do NOT need it — pyepics above covers the same job on both platforms.
+# On Linux, if you want it:
+#     pip install cothread

@@ -1,0 +1,1223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Girder Align — Console (Draft)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#17213f; --bg2:#1e2b4d; --panel:#243153; --panel2:#2c3960;
+    --line:#3b496e; --line2:#526287; --txt:#ffffff; --muted:#c7d0e3; --faint:#93a1bf;
+    --cyan:#62d7e8; --mint:#62d9ae; --amber:#ffdc00; --red:#ff776c; --violet:#b9a9ff;
+    --yellow:#ffdc00; --navy:#17213f;
+    --shadow:0 1px 0 rgba(255,255,255,.06), 0 8px 24px rgba(5,10,28,.32);
+    --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+    --sans:'Space Grotesk',ui-sans-serif,system-ui,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{background:linear-gradient(135deg,var(--navy) 0%,#202f58 58%,#31416b 100%);
+    color:var(--txt);font-family:var(--sans);-webkit-font-smoothing:antialiased;line-height:1.4;padding:20px;min-height:100vh}
+  .wrap{max-width:1220px;margin:0 auto}
+  .mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+  /* header */
+  header{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:18px}
+  .brand{display:flex;align-items:center;gap:14px}
+  .glyph{width:46px;height:46px;border:0;border-radius:50%;position:relative;flex:none;background:var(--yellow);box-shadow:0 2px 8px rgba(0,0,0,.2)}
+  .glyph svg{width:100%;height:100%;display:block}
+  h1{font-size:20px;font-weight:700;letter-spacing:0;margin:0;line-height:1.1}
+  .brand .sub{font-size:11.5px;color:var(--muted);margin-top:3px}
+  .draft-tag{font-family:var(--mono);font-size:9.5px;color:var(--yellow);border:1px solid rgba(255,220,0,.45);
+    background:rgba(255,220,0,.1);padding:1px 6px;border-radius:4px;letter-spacing:.04em;margin-left:8px;vertical-align:2px}
+  .hdr-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .readout{background:rgba(36,49,83,.82);border:1px solid var(--line);border-radius:8px;padding:7px 11px;min-width:74px}
+  .readout .k{font-size:9px;color:var(--faint)}
+  .readout .v{font-family:var(--mono);font-size:15px;font-weight:500;margin-top:2px}
+  .readout .v small{font-size:10px;color:var(--muted);font-weight:400}
+  .seg{display:flex;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:3px;gap:2px}
+  .seg button{font-family:var(--mono);font-size:12px;color:var(--muted);background:none;border:0;padding:6px 11px;border-radius:6px;cursor:pointer;font-weight:500;transition:.12s}
+  .seg button:hover:not(:disabled){color:var(--txt)}
+  .seg button[aria-pressed="true"]{background:var(--yellow);color:var(--navy);box-shadow:none}
+  .seg button:disabled{cursor:not-allowed;opacity:.45}
+  /* stepper */
+  .stepper{display:flex;align-items:center;margin:0 0 16px;padding:12px 16px;background:var(--panel);border:1px solid var(--line);border-radius:11px;overflow-x:auto}
+  .step{display:flex;align-items:center;gap:9px;flex:none}
+  .step .dot{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--line2);display:grid;place-items:center;font-family:var(--mono);font-size:11px;color:var(--faint);flex:none;transition:.2s}
+  .step .lbl{font-size:12px;color:var(--faint);white-space:nowrap}
+  .step.done .dot{border-color:var(--mint);color:var(--mint);background:rgba(78,207,158,.08)}
+  .step.done .lbl{color:var(--muted)}
+  .step.active .dot{border-color:var(--cyan);color:var(--cyan);background:rgba(75,201,224,.1);box-shadow:0 0 0 4px rgba(75,201,224,.08)}
+  .step.active .lbl{color:var(--txt);font-weight:500}
+  .step .bar{width:22px;height:1.5px;background:var(--line);margin:0 4px}
+  .step.done .bar{background:var(--mint)}
+  /* cards */
+  .card{background:rgba(36,49,83,.92);border:1px solid var(--line);border-radius:8px;box-shadow:var(--shadow)}
+  .card-h{display:flex;align-items:center;justify-content:space-between;padding:14px 16px 12px;border-bottom:1px solid var(--line)}
+  .card-h h2{font-size:13px;font-weight:600;margin:0;letter-spacing:.02em}
+  .card-b{padding:14px 16px}
+  .schematic-viewport{position:relative;min-height:420px;border-radius:6px;overflow:hidden;border:1px solid var(--line);background:linear-gradient(180deg,rgba(16,25,50,.7),rgba(29,43,75,.9));}
+  .schematic-viewport.hidden{display:none}
+  .schematic-viewport canvas{display:block;width:100%;height:420px;background:radial-gradient(1100px 400px at 50% 0%, rgba(75,201,224,.08), rgba(11,15,20,0) 60%)}
+  .schematic-viewport .viewport-hint{position:absolute;left:14px;bottom:12px;pointer-events:none;display:inline-flex;align-items:center;gap:8px;padding:6px 9px;border-radius:4px;background:rgba(23,33,63,.82);border:1px solid rgba(98,215,232,.3);color:var(--muted);font-size:10px;font-family:var(--mono)}
+  .schematic-viewport .scale-panel{position:absolute;right:14px;bottom:12px;display:flex;align-items:center;gap:10px;padding:6px 9px;border-radius:4px;background:rgba(23,33,63,.88);border:1px solid rgba(98,215,232,.3);font-family:var(--mono);font-size:10px;color:var(--muted)}
+  .schematic-viewport .scale-panel .swatch{width:12px;height:12px;border-radius:3px;background:linear-gradient(90deg,#4bc9e0,#ef6a5f);box-shadow:0 0 0 1px rgba(255,255,255,.08)}
+  .schematic-viewport .scale-panel input[type="range"]{width:110px;accent-color:var(--cyan)}
+  .schematic-viewport .scale-panel .pan-toggle{background:rgba(98,215,232,.08);border:1px solid rgba(98,215,232,.3);color:var(--txt);padding:5px 8px;border-radius:4px;font-family:var(--mono);font-size:9.5px;cursor:pointer}
+  .schematic-viewport .scale-panel .pan-toggle.active{background:rgba(78,207,158,.14);border-color:rgba(78,207,158,.35);color:var(--mint)}
+  .chip{font-family:var(--mono);font-size:10.5px;padding:3px 9px;border-radius:4px;font-weight:500;white-space:nowrap}
+  .chip.ok{color:var(--mint);background:rgba(78,207,158,.1);border:1px solid rgba(78,207,158,.3)}
+  .chip.warn{color:var(--amber);background:rgba(237,179,76,.1);border:1px solid rgba(237,179,76,.3)}
+  .chip.bad{color:var(--red);background:rgba(239,106,95,.1);border:1px solid rgba(239,106,95,.3)}
+  .chip.idle{color:var(--faint);background:var(--panel2);border:1px solid var(--line)}
+  .chip.prov{color:var(--violet);background:rgba(157,139,240,.1);border:1px solid rgba(157,139,240,.35)}
+  /* schematic */
+  .schematic{margin-bottom:16px}
+  .schematic .card-b{padding:8px 10px 10px}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;padding:2px 6px 8px;font-size:10.5px;color:var(--muted)}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+  .lg-dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+  .lg-sq{width:8px;height:8px;display:inline-block;border:1px solid}
+  /* grid */
+  .grid{display:grid;grid-template-columns:1.35fr 1fr;gap:16px;align-items:start}
+  @media(max-width:900px){.grid{grid-template-columns:1fr}}
+  .subhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+  .eyebrow2{font-size:10px;color:var(--muted);font-weight:600}
+  /* dof meter */
+  .dof{display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid rgba(38,49,63,.55)}
+  .dof:last-child{border-bottom:0}
+  .dof .pr{font-family:var(--mono);font-size:9.5px;color:var(--faint);width:20px;flex:none}
+  .dof .name{width:112px;flex:none}
+  .dof .name .t{font-size:12.5px;font-weight:500}
+  .dof .name .s{font-family:var(--mono);font-size:9.5px;color:var(--faint);margin-top:1px}
+  .meter{flex:1;height:26px;position:relative;border-radius:5px;background:var(--bg2);border:1px solid var(--line);overflow:hidden}
+  .meter .zone{position:absolute;top:0;bottom:0;background:rgba(78,207,158,.09);border-left:1px dashed rgba(78,207,158,.35);border-right:1px dashed rgba(78,207,158,.35)}
+  .meter .datum{position:absolute;top:0;bottom:0;left:50%;width:1px;background:var(--line2)}
+  .meter .marker{position:absolute;top:3px;bottom:3px;width:3px;border-radius:2px;transform:translateX(-50%);transition:left .5s cubic-bezier(.4,0,.2,1),background .3s}
+  .dof .val{width:98px;flex:none;text-align:right}
+  .dof .val .num{font-family:var(--mono);font-size:13px;font-weight:500}
+  .dof .val .pct{font-family:var(--mono);font-size:9.5px;color:var(--faint);margin-top:1px}
+  .c-ok{color:var(--mint)}.c-warn{color:var(--amber)}.c-bad{color:var(--red)}.c-idle{color:var(--faint)}
+  .bg-ok{background:var(--mint)}.bg-warn{background:var(--amber)}.bg-bad{background:var(--red)}.bg-idle{background:var(--faint)}
+  .divider{height:1px;background:var(--line);margin:14px 0}
+  .distortion{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .dist{background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:11px 12px}
+  .dist .top{display:flex;justify-content:space-between;align-items:baseline}
+  .dist .nm{font-size:11.5px;font-weight:500}
+  .dist .rd{font-family:var(--mono);font-size:16px;font-weight:600}
+  .dist .track{height:5px;border-radius:3px;background:var(--panel2);margin:9px 0 6px;position:relative;overflow:hidden}
+  .dist .fill{position:absolute;left:0;top:0;bottom:0;border-radius:3px;transition:width .4s}
+  .dist .warnmark{position:absolute;top:-2px;bottom:-2px;width:1px;background:var(--amber);opacity:.6}
+  .dist .stopmark{position:absolute;top:-2px;bottom:-2px;width:1px;background:var(--red);opacity:.7}
+  .dist .thr{font-family:var(--mono);font-size:9px;color:var(--faint);display:flex;justify-content:space-between}
+  /* right col */
+  .kv{display:flex;justify-content:space-between;align-items:baseline;padding:6px 0;border-bottom:1px solid rgba(38,49,63,.5)}
+  .kv:last-child{border-bottom:0}
+  .kv .k{font-size:11.5px;color:var(--muted)}
+  .kv .v{font-family:var(--mono);font-size:12.5px;font-weight:500}
+  .encset{border:1px solid var(--line);border-radius:9px;padding:10px 12px;margin-bottom:10px;transition:.2s;background:var(--bg2)}
+  .encset.active{border-color:rgba(75,201,224,.35);box-shadow:0 0 0 1px rgba(75,201,224,.12)}
+  .encset.muted{opacity:.5}
+  .set-label{display:flex;align-items:center;gap:8px;margin:0 0 8px}
+  .set-label .tag{font-family:var(--mono);font-size:9px;letter-spacing:.1em;padding:2px 7px;border-radius:4px;border:1px solid var(--line2);color:var(--faint)}
+  .set-label.active .tag{color:var(--cyan);border-color:rgba(75,201,224,.4);background:rgba(75,201,224,.08)}
+  .set-label .txt{font-size:11px;color:var(--muted)}
+  .set-label.active .txt{color:var(--txt)}
+  .enc{display:flex;align-items:center;gap:10px;padding:6px 0}
+  .enc .id{font-family:var(--mono);font-size:11px;width:82px;flex:none;color:var(--muted)}
+  .enc .arrow{width:16px;flex:none;text-align:center;font-family:var(--mono);font-weight:600}
+  .enc .mag{font-family:var(--mono);font-size:13px;font-weight:500;width:66px;text-align:right}
+  .enc .note{font-size:10px;color:var(--faint);flex:1;text-align:right}
+  .hist{display:flex;align-items:flex-end;gap:6px;height:52px;padding-top:14px}
+  .hbar{flex:1;background:linear-gradient(180deg,var(--cyan),rgba(75,201,224,.25));border-radius:3px 3px 0 0;min-height:3px;position:relative;transition:height .4s}
+  .hbar.ok{background:linear-gradient(180deg,var(--mint),rgba(78,207,158,.25))}
+  .hbar span{position:absolute;top:-14px;left:0;right:0;text-align:center;font-family:var(--mono);font-size:8.5px;color:var(--muted)}
+  .hist-x{display:flex;gap:6px;margin-top:5px}
+  .hist-x div{flex:1;text-align:center;font-family:var(--mono);font-size:8.5px;color:var(--faint)}
+  /* action */
+  .actionbar{display:flex;align-items:center;gap:12px;margin-top:16px;padding:14px 16px;background:var(--panel);border:1px solid var(--line);border-radius:12px;flex-wrap:wrap}
+  .prompt{flex:1;min-width:200px}
+  .prompt .p1{font-size:13px;font-weight:500}
+  .prompt .p2{font-size:11px;color:var(--muted);margin-top:2px}
+  .btn{font-family:var(--sans);font-size:13px;font-weight:600;padding:11px 20px;border-radius:4px;border:0;cursor:pointer;transition:.14s;white-space:nowrap}
+  .btn.primary{background:var(--yellow);color:var(--navy)}
+  .btn.primary:hover{background:#ffe84d;transform:translateY(-1px)}
+  .btn.primary.gate{background:var(--mint);color:#08291f}
+  .btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--line2)}
+  .btn.ghost:hover{color:var(--txt);border-color:var(--faint)}
+  .foot{margin-top:16px;font-size:10.5px;color:var(--faint);text-align:center;line-height:1.6}
+  .foot .mono{color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <div class="glyph">
+        <svg viewBox="0 0 46 46" fill="none" aria-hidden="true">
+          <polygon points="23,4 26,18 35,10 29,20 43,23 29,26 37,35 27,29 23,43 20,29 10,36 17,26 3,23 17,20 9,11 20,18" fill="#ffffff"/>
+        </svg>
+      </div>
+      <div>
+        <h1>Girder alignment <span class="draft-tag">Draft · simulated</span></h1>
+        <div class="sub">Diamond Light Source · build-bay alignment console · laser tracker to encoder deltas</div>
+      </div>
+    </div>
+    <div class="hdr-right">
+      <div class="seg" id="typeSeg" role="group" aria-label="Girder fabrication type">
+        <button data-type="MS" aria-pressed="true">MS</button>
+        <button data-type="LM" aria-pressed="false">LM</button>
+        <button data-type="ML" aria-pressed="false">ML</button>
+        <button data-type="SM" aria-pressed="false">SM</button>
+      </div>
+      <div class="readout"><div class="k">Iteration</div><div class="v" id="rIter">—</div></div>
+      <div class="readout"><div class="k">Air temp</div><div class="v" id="rTemp">21.4<small>°C</small></div></div>
+    </div>
+  </header>
+
+  <div class="stepper" id="stepper"></div>
+
+  <div class="actionbar">
+    <div class="prompt">
+      <div class="p1" id="promptTitle">Load the initial laser-tracker survey to begin.</div>
+      <div class="p2" id="promptSub">MS · 9 fiducials · air ±0.5 °C, girder thermally stable</div>
+    </div>
+    <input type="file" id="csvInput" accept=".csv,.txt" style="display:none">
+    <button class="btn ghost" id="btnUpload">Upload CSV</button>
+    <button class="btn ghost" id="btnReset">Reset</button>
+    <button class="btn primary" id="btnPrimary">Load survey</button>
+  </div>
+
+  <!-- schematic -->
+  <div class="card schematic">
+    <div class="card-h">
+      <h2>Rig layout: geometry view</h2>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+        <span class="seg" style="padding:2px" id="viewSeg">
+          <button data-view="rig" class="vbtn">2D plan</button>
+          <button data-view="points" class="vbtn">Survey deltas</button>
+          <button data-view="3d" class="vbtn">3D rig</button>
+        </span>
+        <span class="chip idle" id="schemChip">MS geometry</span>
+      </div>
+    </div>
+    <div class="card-b">
+      <div id="schemHost" class="schematic-viewport"></div>
+      <div id="schem3dHost" class="schematic-viewport hidden" aria-label="3D girder and jack preview"></div>
+      <div id="schemLegend" class="legend">
+        <span><span class="lg-dot" style="background:var(--cyan)"></span>Wedge jack (vertical): label = Y delta</span>
+        <span><span class="lg-sq" style="border-color:var(--mint)"></span>Surge/sway stage: arrow = in-plane move</span>
+        <span><span class="lg-dot" style="background:var(--faint);width:6px;height:6px"></span>Survey fiducial</span>
+        <span style="color:var(--violet)">jack frame +4.06° about Y vs master</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <!-- left -->
+    <div class="card">
+      <div class="card-h"><h2>Alignment state: evaluation points</h2><span class="chip idle" id="stateChip">Awaiting survey</span></div>
+      <div class="card-b">
+        <div class="subhead"><span class="eyebrow2">Degrees of freedom · priority order</span><span class="eyebrow2" style="color:var(--faint)">error · % of tol</span></div>
+        <div id="dofList"></div>
+        <div class="divider"></div>
+        <div class="subhead"><span class="eyebrow2">Distortion monitors · left-null(J)</span></div>
+        <div class="distortion" id="distList"></div>
+      </div>
+    </div>
+    <!-- right -->
+    <div style="display:flex;flex-direction:column;gap:16px">
+      <div class="card">
+        <div class="card-h"><h2>Survey fit</h2><span class="chip idle" id="fitChip">—</span></div>
+        <div class="card-b">
+          <div class="kv"><span class="k">Fiducials used</span><span class="v mono" id="fFid">—</span></div>
+          <div class="kv"><span class="k">RMS residual</span><span class="v mono" id="fRms">—</span></div>
+          <div class="kv"><span class="k">Max residual</span><span class="v mono" id="fMax">—</span></div>
+          <div class="kv"><span class="k">USMN uncertainty</span><span class="v mono" id="fUsmn">—</span></div>
+          <div class="kv"><span class="k">Registration</span><span class="v mono" style="color:var(--muted)">TRACKER→MASTER</span></div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h2>Encoder deltas</h2><span class="chip idle" id="encChip">Not solved</span></div>
+        <div class="card-b">
+          <div id="pairCtl" style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-bottom:12px;font-size:10.5px;color:var(--muted)">
+            <span style="display:flex;align-items:center;gap:6px">Pairing
+              <span class="seg" style="padding:2px">
+                <button data-pair="end" class="pbtn">End</button><button data-pair="side" class="pbtn">Side</button></span></span>
+            <span style="display:flex;align-items:center;gap:6px">Move first
+              <span class="seg" style="padding:2px">
+                <button data-first="0" class="fbtn">—</button><button data-first="1" class="fbtn">—</button></span></span>
+            <span style="display:flex;align-items:center;gap:6px">Vertical
+              <span class="seg" style="padding:2px">
+                <button data-vertical="sequential" class="vmode">Sequential</button><button data-vertical="combined" class="vmode">Combined</button></span></span>
+          </div>
+          <div class="encset muted" id="setFlat">
+            <div class="set-label" id="lblFlat"><span class="tag">STEP 1</span><span class="txt">Flatten — level pitch/roll · sequential pairs</span></div>
+            <div id="flatRows"></div>
+          </div>
+          <div class="encset muted" id="setVert">
+            <div class="set-label" id="lblVert"><span class="tag">STEP 2</span><span class="txt">Vertical heave · sequential pairs</span></div>
+            <div id="vertRows"></div>
+          </div>
+          <div class="encset muted" id="setHorz">
+            <div class="set-label" id="lblHorz"><span class="tag">STEP 3</span><span class="txt">Horizontal — along jack axes</span></div>
+            <div id="horzRows"></div>
+          </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h2>Convergence</h2><span class="chip idle" id="convChip">—</span></div>
+        <div class="card-b">
+          <div class="hist" id="histBars"></div>
+          <div class="hist-x" id="histX"></div>
+          <div style="font-size:10px;color:var(--faint);margin-top:8px">Peak error as % of tolerance, per survey.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    Draft interface · encoder deltas computed live from the real MS Jacobian; values otherwise <span class="mono">simulated</span>.<br>
+    Surge/sway act along the <span class="mono">jack axes</span> (+4.06° about Y vs master) · flatten folded into the first vertical set · WARP/STRETCH nulled and monitored.
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/STLLoader.js"></script>
+<script>
+const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
+
+// ============ per-girder geometry registry (master frame, mm) ============
+// Each entry is pure DATA. Adding LM / ML / SM = paste their numbers here; no code changes.
+// IN/OUT and US/DS labels are DERIVED from position (see setGeometry) so they can never be
+// mis-assigned by hand — this is what previously grouped roll "side pairs" diagonally.
+// Geometry corrected 2026-09: LM/ML/SM point lists in the source workbook carried MS's
+// rotation; re-derived through each girder's own printed transform and confirmed in CAD.
+const GEOM={
+  MS:{
+    label:'MS', ready:true, stl:'ms_bare_girder.stl', zRange:[1340.0,8925.2],
+    // frame = the workbook's printed transform (confirmed against CAD).
+    jackFrame:{ xAxis:[0.9974885,0,0.070829], zAxis:[-0.070829,0,0.9974885],
+                origin:[-217.7467,-977.531,5108.158], yawDeg:-4.0616 },
+    bearings:[ [-247.9909,-977.531,1792.6889], [280.6771,-977.531,1830.228],
+               [-187.5021,-977.531,8423.6271], [-716.1711,-977.531,8386.0881] ],
+    venc:[ [-271.0109,-1116.5,2116.8729], [257.6581,-1116.5,2154.412],
+           [-164.4831,-1116.5,8099.4431], [-693.1511,-1116.5,8061.9041] ],
+    henc:[
+      {id:'SURGE_US',p:[-156.0039,-1345,1979.6739],axis:'z',sign:+1,kind:'surge'},
+      {id:'SWAY_US',p:[-257.1699,-1299.5,1992.5409],axis:'x',sign:+1,kind:'sway'},
+      {id:'SURGE_DS',p:[-598.6851,-1345,8213.9771],axis:'z',sign:-1,kind:'surge'},
+      {id:'SWAY_DS',p:[-697.0181,-1299.5,8186.9441],axis:'x',sign:+1,kind:'sway'}
+    ],
+    fids:{
+      APNT26:[-403.0919,-450,1365.0509], APNT27:[368.7881,-450,1365.8809], APNT28:[-475.3779,-450,2383.066],
+      APNT29:[422.3611,-450,2446.812], APNT30:[-217.747,-450,5108.158], APNT31:[-857.8551,-450,7769.5041],
+      APNT32:[39.8849,-450,7833.2501], APNT33:[-166.0011,-450,8897.3451], APNT34:[-930.7311,-450,8795.8301]
+    }
+  },
+  LM:{
+    label:'LM', ready:true, stl:'lm_bare_girder.stl', zRange:[3686.5,11503.8],
+    // frame = the workbook's printed transform (confirmed against CAD).
+    jackFrame:{ xAxis:[0.9983917,0,0.0566928], zAxis:[-0.0566928,0,0.9983917],
+                origin:[-137.7316,-977.531,7577.161], yawDeg:-3.2500 },
+    bearings:[ [-214.9357,-977.531,4262.4529], [314.212,-977.531,4292.4997],
+               [-60.5274,-977.531,10891.869], [-589.6752,-977.531,10861.8223] ],
+    venc:[ [-233.3614,-1116.5,4586.9305], [295.7863,-1116.5,4616.9772],
+           [-42.1017,-1116.5,10567.3915], [-571.2494,-1116.5,10537.3447] ],
+    henc:[
+      {id:'SURGE_US',p:[-120.3094,-1345,4448.1162],axis:'z',sign:+1,kind:'surge'},
+      {id:'SWAY_US',p:[-221.283,-1299.5,4462.4149],axis:'x',sign:+1,kind:'sway'},
+      {id:'SURGE_DS',p:[-474.6388,-1345,10688.0644],axis:'z',sign:-1,kind:'surge'},
+      {id:'SWAY_DS',p:[-573.3439,-1299.5,10662.4269],axis:'x',sign:+1,kind:'sway'}
+    ],
+    fids:{
+      APNT47:[-368.9491,-450,3711.5132], APNT48:[402.2913,-450,3711.5138], APNT49:[464.6145,-450,4907.0149],
+      APNT50:[-433.9374,-450,4855.9916], APNT51:[-740.0787,-450,10247.307], APNT52:[158.4742,-450,10298.3304],
+      APNT53:[-38.6042,-450,11475.9301], APNT54:[-804.1216,-450,11375.1483], APNT55:[-137.7321,-450,7577.161]
+    }
+  },
+  ML:{
+    label:'ML', ready:true, stl:'ml_bare_girder.stl', zRange:[1327.4,9150.9],
+    // frame = the workbook's printed transform (confirmed against CAD).
+    jackFrame:{ xAxis:[0.9969854,0,0.0775891], zAxis:[-0.0775891,0,0.9969854],
+                origin:[-221.3855,-977.531,5222.6147], yawDeg:-4.4500 },
+    bearings:[ [-229.1547,-977.531,1907.0165], [299.2477,-977.531,1948.1393],
+               [-213.6163,-977.531,8538.213], [-742.0186,-977.531,8497.0902] ],
+    venc:[ [-254.3717,-1116.5,2231.037], [274.0307,-1116.5,2272.1588],
+           [-188.3992,-1116.5,8214.1925], [-716.8016,-1116.5,8173.0697] ],
+    henc:[
+      {id:'SURGE_US',p:[-138.4373,-1345,2094.6207],axis:'z',sign:+1,kind:'surge'},
+      {id:'SWAY_US',p:[-239.6872,-1299.5,2106.8017],axis:'x',sign:+1,kind:'sway'},
+      {id:'SURGE_DS',p:[-623.3686,-1345,8325.7795],axis:'z',sign:-1,kind:'surge'},
+      {id:'SWAY_DS',p:[-721.5151,-1299.5,8298.0816],axis:'x',sign:+1,kind:'sway'}
+    ],
+    fids:{
+      APNT47:[-371.5962,-450,1352.9732], APNT48:[399.475,-450,1369.1244], APNT49:[436.7488,-450,2565.6696],
+      APNT50:[-460.5384,-450,2495.8395], APNT51:[-879.5187,-450,7879.5599], APNT52:[17.7675,-450,7949.39],
+      APNT53:[-203.9295,-450,9122.6051], APNT54:[-967.1683,-450,9005.8126], APNT55:[-221.385,-450,5222.6142]
+    }
+  },
+  SM:{
+    label:'SM', ready:true, stl:'sm_bare_girder.stl', zRange:[2409.7,10000.3],
+    // frame = the workbook's printed transform (confirmed against CAD).
+    jackFrame:{ xAxis:[0.9983301,0,0.0577662], zAxis:[-0.0577662,0,0.9983301],
+                origin:[-135.8644,-977.531,6184.5706], yawDeg:-3.3116 },
+    bearings:[ [-209.5046,-977.531,2869.7814], [319.6104,-977.531,2900.3982],
+               [-62.2246,-977.531,9499.3593], [-591.3387,-977.531,9468.7436] ],
+    venc:[ [-228.2782,-1116.5,3194.239], [300.8358,-1116.5,3224.8547],
+           [-43.45,-1116.5,9174.9028], [-572.5651,-1116.5,9144.2861] ],
+    henc:[
+      {id:'SURGE_US',p:[-115.078,-1345,3055.5463],axis:'z',sign:+1,kind:'surge'},
+      {id:'SWAY_US',p:[-216.0659,-1299.5,3069.7364],axis:'x',sign:+1,kind:'sway'},
+      {id:'SURGE_DS',p:[-476.1166,-1345,9295.1095],axis:'z',sign:-1,kind:'surge'},
+      {id:'SWAY_DS',p:[-574.794,-1299.5,9269.3669],axis:'x',sign:+1,kind:'sway'}
+    ],
+    fids:{
+      APNT26:[-370.1889,-450,2444.2103], APNT27:[401.6348,-450,2434.9366], APNT28:[-429.1443,-450,3463.0842],
+      APNT29:[469.3531,-450,3515.0747], APNT30:[-135.8641,-450,6184.5704], APNT31:[-741.0814,-450,8854.067],
+      APNT32:[157.4151,-450,8906.0565], APNT33:[-34.5237,-450,9972.7553], APNT34:[-800.5179,-450,9881.259]
+    }
+  }
+};
+
+// active geometry — reassigned by setGeometry(type)
+let jackX,jackY,jackZ,p0,JACKS,VENC,HENC,FIDS,NOMINAL,JMAT,ENC_LABELS,BR_XZ,EN_XZ,GEOMWARN;
+const BRK=['J_US_IN','J_US_OUT','J_DS_IN','J_DS_OUT'], ENK=['V_US_IN','V_US_OUT','V_DS_IN','V_DS_OUT'];
+
+function setGeometry(type){
+  const G=GEOM[type]||GEOM.MS;
+  const src=G.ready?G:GEOM.MS;                    // fall back to MS until data arrives
+  const jf=src.jackFrame, a=(jf.yawDeg||0)*Math.PI/180;
+  jackX=jf.xAxis?jf.xAxis.slice():[Math.cos(a),0,Math.sin(a)];
+  jackZ=jf.zAxis?jf.zAxis.slice():[-Math.sin(a),0,Math.cos(a)];
+  jackY=[0,1,0]; p0=jf.origin.slice();
+  // derive US/DS (along jack-Z) and IN/OUT (across jack-X) from actual position
+  const tag=p=>{const d=sub(p,p0);
+    return (dot(d,jackZ)<0?'US':'DS')+'_'+(dot(d,jackX)<0?'IN':'OUT');};
+  const order=(pts,pre)=>{const m={}; pts.forEach(p=>{m[pre+'_'+tag(p)]=p;});
+    return [pre+'_US_IN',pre+'_US_OUT',pre+'_DS_IN',pre+'_DS_OUT'].map(id=>({id,p:m[id]}));};
+  JACKS=order(src.bearings,'J');
+  VENC =order(src.venc,'V');
+  HENC =src.henc.map(e=>({...e,dir:e.axis==='z'?jackZ:jackX}));
+  FIDS =Object.values(src.fids).map(v=>v.slice());
+  NOMINAL={}; for(const k in src.fids) NOMINAL[k]=src.fids[k].slice();
+  BR_XZ={}; JACKS.forEach(j=>BR_XZ[j.id]=[j.p[0],j.p[2]]);
+  EN_XZ={}; VENC .forEach(e=>EN_XZ[e.id]=[e.p[0],e.p[2]]);
+  const b=buildJ(); JMAT=b.J; ENC_LABELS=b.labels;
+  // Legacy cross-check: if a sheetFrame is present (superseded workbook transform) compare it
+  // to the active frame. With the corrected geometry the two agree, so this stays silent.
+  GEOMWARN=null;
+  if(src.sheetFrame){
+    const sz=src.sheetFrame.zAxis, so=src.sheetFrame.origin;
+    const dYaw=Math.abs(Math.atan2(jackZ[0],jackZ[2])-Math.atan2(sz[0],sz[2]))*1000; // mrad
+    const dOrg=Math.hypot(so[0]-p0[0],so[2]-p0[2]);
+    if(dYaw>0.5||dOrg>1) GEOMWARN={dYaw,dOrg};
+  }
+}
+
+// STL re-placement. With the corrected point geometry the CAD placement and the point frame
+// coincide, so this returns null and the STL is drawn in its native master-CSYS position.
+// Retained only to handle a legacy dataset that still carries a divergent sheetFrame.
+function stlAlignMatrix(g){
+  if(!g || !g.sheetFrame || !g.sheetFrame.xAxis) return null;
+  const bx=g.jackFrame.xAxis, bz=g.jackFrame.zAxis, bo=g.jackFrame.origin;
+  const sx=g.sheetFrame.xAxis, sz=g.sheetFrame.zAxis, so=g.sheetFrame.origin;
+  // M3 = bx⊗sx + ŷ⊗ŷ + bz⊗sz    (maps sheet-frame placement into the point frame)
+  const M3=[[0,0,0],[0,0,0],[0,0,0]];
+  for(let i=0;i<3;i++)for(let j=0;j<3;j++){
+    M3[i][j]=bx[i]*sx[j]+bz[i]*sz[j]+((i===1&&j===1)?1:0);}
+  const t=[0,1,2].map(i=>bo[i]-(M3[i][0]*so[0]+M3[i][1]*so[1]+M3[i][2]*so[2]));
+  const m=new THREE.Matrix4();
+  m.set(M3[0][0],M3[0][1],M3[0][2],t[0],
+        M3[1][0],M3[1][1],M3[1][2],t[1],
+        M3[2][0],M3[2][1],M3[2][2],t[2],
+        0,0,0,1);
+  return m;
+}
+
+// ============ Jacobian (8x6): enc = J·[tx,ty,tz,thx,thy,thz] about p0 ============
+function buildJ(){
+  const rows=[], labels=[];
+  for(const e of VENC){const r=sub(e.p,p0); rows.push([0,-1,0, r[2],0,-r[0]]); labels.push(e.id);}
+  for(const e of HENC){const r=sub(e.p,p0);const[ux,uy,uz]=e.dir;const s=e.sign;
+    rows.push([s*ux,0,s*uz,0, s*(ux*r[2]+uz*(-r[0])),0]); labels.push(e.id);}
+  return {J:rows,labels};
+}
+function matvec(M,v){return M.map(row=>row.reduce((a,c,i)=>a+c*v[i],0));}
+
+// ---- rigid-plane forward model for intermediate vertical targets ----
+// vertical encoder reading = -(girder underside Y at encoder XZ); girder plane fit from 4 jack heights
+// BR_XZ / EN_XZ are derived in setGeometry() from JACKS / VENC — never hand-maintained.
+function planeFit(h){ // h: {jackName: girderY at bearing}; least-squares a+b*x+c*z
+  // normal equations for 4 pts, 3 params
+  let Sx=0,Sz=0,Sxx=0,Szz=0,Sxz=0,Sy=0,Sxy=0,Szy=0,n=4;
+  for(const k of BRK){const[x,z]=BR_XZ[k],y=h[k];Sx+=x;Sz+=z;Sxx+=x*x;Szz+=z*z;Sxz+=x*z;Sy+=y;Sxy+=x*y;Szy+=z*y;}
+  // solve 3x3 [[n,Sx,Sz],[Sx,Sxx,Sxz],[Sz,Sxz,Szz]]·[a,b,c]=[Sy,Sxy,Szy]
+  const A=[[n,Sx,Sz],[Sx,Sxx,Sxz],[Sz,Sxz,Szz]], B=[Sy,Sxy,Szy];
+  return solve3(A,B);
+}
+function solve3(A,b){const M=A.map((r,i)=>r.concat(b[i]));
+  for(let c=0;c<3;c++){let p=c;for(let r=c+1;r<3;r++)if(Math.abs(M[r][c])>Math.abs(M[p][c]))p=r;[M[c],M[p]]=[M[p],M[c]];
+    for(let r=0;r<3;r++)if(r!==c){const f=M[r][c]/M[c][c];for(let k=c;k<4;k++)M[r][k]-=f*M[c][k];}}
+  return [M[0][3]/M[0][0],M[1][3]/M[1][1],M[2][3]/M[2][2]];}
+function encFromHeights(h){const[a,b,c]=planeFit(h);const o={};
+  for(const k of ENK){const[x,z]=EN_XZ[k];o[k]=-(a+b*x+c*z);} return o;} // -Y = +count
+// machine-frame error -> master [t;theta]
+function scaleAdd(...pairs){const o=[0,0,0];for(const[v,s]of pairs){o[0]+=v[0]*s;o[1]+=v[1]*s;o[2]+=v[2]*s;}return o;}
+function toMaster(e){ // e={sway,heave,surge (mm), roll,pitch,yaw (mrad)}
+  const t=scaleAdd([jackX,e.sway],[jackY,e.heave],[jackZ,e.surge]);
+  const th=scaleAdd([jackZ,e.roll/1000],[jackX,e.pitch/1000],[jackY,e.yaw/1000]); // mrad -> rad
+  return t.concat(th);
+}
+
+// ============ axes / config ============
+const AXES=[
+ {key:'roll', name:'Roll',  sym:'about beam',   unit:'mrad', tol:0.05},
+ {key:'sway', name:'Sway',  sym:'jack-X',       unit:'mm',   tol:0.10},
+ {key:'heave',name:'Heave', sym:'Y vertical',   unit:'mm',   tol:0.10},
+ {key:'yaw',  name:'Yaw',   sym:'about Y',      unit:'mrad', tol:0.15},
+ {key:'pitch',name:'Pitch', sym:'jack-X axis',  unit:'mrad', tol:0.15},
+ {key:'surge',name:'Surge', sym:'jack-Z beam',  unit:'mm',   tol:0.20}];
+// TYPES derived from the geometry registry — single source of truth
+const TYPES={}; for(const k in GEOM){const g=GEOM[k];
+  TYPES[k]={real:g.ready, fid:g.ready?Object.keys(g.fids).length:'—'};}
+
+// ============ state / sim ============
+let S={};
+function initState(type){setGeometry(type);
+  S={type,iter:0,phase:'idle',err:null,deltas:null,plan:null,warp:0.0009,stretch:0.0011,fit:null,history:[],pairing:'end',firstIdx:0,uploaded:false,schemView:'rig',combineVertical:false};}
+initState('MS');
+// NOMINAL / geometry now come from GEOM via setGeometry(type)
+const rnd=(a,b)=>a+Math.random()*(b-a);
+function seedError(iter){ // machine-frame error vector
+  const s=iter<=1?1:Math.pow(0.12,iter-1);
+  return {sway:(iter<=1?1.80:1.80*s)+rnd(-.02,.02), heave:(iter<=1?-0.90:-0.90*s)+rnd(-.02,.02),
+    surge:(iter<=1?1.10:1.10*s)+rnd(-.02,.02), roll:(iter<=1?0.40:0.40*s)+rnd(-.006,.006),
+    pitch:(iter<=1?-0.22:-0.22*s)+rnd(-.006,.006), yaw:(iter<=1?0.15:0.15*s)+rnd(-.005,.005)};
+}
+function encoderDeltas(err){const m=toMaster(err);return matvec(JMAT,m.map(x=>-x));}
+function ydisp(qx,qz,t,th){return t[1]+th[2]*(qx-p0[0])-th[0]*(qz-p0[2]);}
+function pairGroups(pairing){
+  return pairing==='side'
+   ? [{key:'IN',label:'Inboard',bear:['J_US_IN','J_DS_IN'],enc:['V_US_IN','V_DS_IN']},
+      {key:'OUT',label:'Outboard',bear:['J_US_OUT','J_DS_OUT'],enc:['V_US_OUT','V_DS_OUT']}]
+   : [{key:'US',label:'U/S',bear:['J_US_IN','J_US_OUT'],enc:['V_US_IN','V_US_OUT']},
+      {key:'DS',label:'D/S',bear:['J_DS_IN','J_DS_OUT'],enc:['V_DS_IN','V_DS_OUT']}];
+}
+function pairPlan(sub,pairing,firstIdx){ // sub = machine-frame subset {roll,pitch,heave,...}
+  const mF=toMaster({sway:0,heave:sub.heave||0,surge:0,roll:sub.roll||0,pitch:sub.pitch||0,yaw:0}).map(x=>-x);
+  const t=mF.slice(0,3),th=mF.slice(3); const dh={};
+  for(const k of BRK) dh[k]=ydisp(BR_XZ[k][0],BR_XZ[k][1],t,th);
+  const eFin=encFromHeights(dh);
+  const g=pairGroups(pairing), first=g[firstIdx], second=g[1-firstIdx];
+  const hInter={}; for(const k of BRK) hInter[k]=first.bear.includes(k)?dh[k]:0;
+  const eInt=encFromHeights(hInter);
+  return {first:{label:first.label,enc:first.enc,inter:first.enc.map(k=>eInt[k]),fin:first.enc.map(k=>eFin[k])},
+          second:{label:second.label,enc:second.enc,fin:second.enc.map(k=>eFin[k])}};
+}
+function computePlan(err,pairing,firstIdx){
+  const mHz=toMaster({sway:err.sway,heave:0,surge:err.surge,roll:0,pitch:0,yaw:err.yaw}).map(x=>-x);
+  return {flatten:pairPlan({roll:err.roll,pitch:err.pitch},pairing,firstIdx),
+          heave:pairPlan({heave:err.heave},pairing,firstIdx),
+          combined:pairPlan({roll:err.roll,pitch:err.pitch,heave:err.heave},pairing,firstIdx),
+          horiz:matvec(JMAT.slice(4),mHz)};
+}
+// ---- real best-fit pose from uploaded measured points (small-angle LSQ) ----
+function solveN(A,b){const n=b.length,M=A.map((r,i)=>r.concat(b[i]));
+  for(let c=0;c<n;c++){let p=c;for(let r=c+1;r<n;r++)if(Math.abs(M[r][c])>Math.abs(M[p][c]))p=r;[M[c],M[p]]=[M[p],M[c]];
+    for(let r=0;r<n;r++)if(r!==c){const f=M[r][c]/M[c][c];for(let k=c;k<=n;k++)M[r][k]-=f*M[c][k];}}
+  return M.map((r,i)=>r[n]/r[i]);}
+function fitPose(meas){ // meas: {name:[x,y,z]}
+  const names=Object.keys(NOMINAL).filter(n=>meas[n]);
+  const ATA=Array.from({length:6},()=>Array(6).fill(0)), ATb=Array(6).fill(0);
+  for(const n of names){const nom=NOMINAL[n],m=meas[n],r=[nom[0]-p0[0],nom[1]-p0[1],nom[2]-p0[2]];
+    const d=[m[0]-nom[0],m[1]-nom[1],m[2]-nom[2]];
+    const rows=[[1,0,0,0,r[2],-r[1]],[0,1,0,-r[2],0,r[0]],[0,0,1,r[1],-r[0],0]];
+    for(let c=0;c<3;c++){const row=rows[c],bv=d[c];for(let i=0;i<6;i++){ATb[i]+=row[i]*bv;for(let j=0;j<6;j++)ATA[i][j]+=row[i]*row[j];}}}
+  const x=solveN(ATA,ATb); let ss=0,mx=0,cnt=0;
+  for(const n of names){const nom=NOMINAL[n],m=meas[n],r=[nom[0]-p0[0],nom[1]-p0[1],nom[2]-p0[2]];
+    const pred=[x[0]+x[4]*r[2]-x[5]*r[1], x[1]+x[5]*r[0]-x[3]*r[2], x[2]+x[3]*r[1]-x[4]*r[0]];
+    const d=[m[0]-nom[0]-pred[0],m[1]-nom[1]-pred[1],m[2]-nom[2]-pred[2]];
+    const e2=d[0]*d[0]+d[1]*d[1]+d[2]*d[2]; ss+=e2; mx=Math.max(mx,Math.sqrt(e2)); cnt++;}
+  const t=x.slice(0,3),th=x.slice(3);
+  const err={sway:dot(t,jackX),heave:dot(t,jackY),surge:dot(t,jackZ),
+    roll:dot(th,jackZ)*1000,pitch:dot(th,jackX)*1000,yaw:dot(th,jackY)*1000};
+  return {err,rms:Math.sqrt(ss/cnt),max:mx,n:cnt};
+}
+function statusOf(key,val){const tol=AXES.find(a=>a.key===key).tol;const r=Math.abs(val)/tol;return r<=0.85?'ok':(r<=1?'warn':'bad');}
+function peakPct(err){return Math.max(...AXES.map(a=>Math.abs(err[a.key])/a.tol))*100;}
+function allInTol(err){return AXES.every(a=>Math.abs(err[a.key])<=a.tol);}
+
+function stepList(){
+  return S.combineVertical
+   ? [{id:'survey',label:'Survey'},{id:'solve',label:'Solve'},{id:'vertical',label:'Vertical (combined)'},
+      {id:'horizontal',label:'Horizontal'},{id:'verify',label:'EPICS verify'},{id:'record',label:'Record & reset'}]
+   : [{id:'survey',label:'Survey'},{id:'solve',label:'Solve'},{id:'flatten',label:'Flatten'},
+      {id:'vertical',label:'Vertical pairs'},{id:'horizontal',label:'Horizontal'},
+      {id:'verify',label:'EPICS verify'},{id:'record',label:'Record & reset'}];
+}
+const STEPS=stepList();
+function activeStepIndex(){
+  const base={idle:0,surveyed:1,solved:2,flatten_done:3,vertical_done:4,horizontal_done:5,converged:6,reset:6};
+  if(S.combineVertical){
+    return {idle:0,surveyed:1,solved:2,flatten_done:2,vertical_done:3,horizontal_done:4,converged:5,reset:5}[S.phase]??0;
+  }
+  return base[S.phase]??0;
+}
+
+// ============ schematic — plan view in JACK frame (girder horizontal, to scale) ============
+function buildSchematic(){
+  const along=p=>dot(sub(p,p0),jackZ), across=p=>dot(sub(p,p0),jackX);
+  const allP=[...JACKS.map(j=>j.p),...HENC.map(e=>e.p),...FIDS];
+  const A=allP.map(along), C=allP.map(across);
+  const aMin=Math.min(...A)-320,aMax=Math.max(...A)+320, cMin=Math.min(...C)-150,cMax=Math.max(...C)+150;
+  const Wsvg=900,padL=54,padR=54, top=46;
+  const s=(Wsvg-padL-padR)/(aMax-aMin);
+  const Hsvg=(cMax-cMin)*s+top+26;
+  const PX=p=>[padL+(along(p)-aMin)*s, top+(cMax-across(p))*s];
+  const dV=S.deltas?S.deltas.slice(0,4):null, dH=S.deltas?S.deltas.slice(4,8):null;
+  const pointsView = S.schemView==='points';
+  let g=`<svg viewBox="0 0 ${Wsvg} ${Hsvg}" style="width:100%;height:auto;display:block" font-family="IBM Plex Mono">`;
+  // girder body (axis-aligned rect in jack frame)
+  const fA=FIDS.map(along), fC=FIDS.map(across);
+  const gx0=padL+(Math.min(...fA)-150-aMin)*s, gx1=padL+(Math.max(...fA)+150-aMin)*s;
+  const gy0=top+(cMax-(Math.max(...fC)+110))*s, gy1=top+(cMax-(Math.min(...fC)-110))*s;
+  g+=`<rect x="${gx0}" y="${gy0}" width="${gx1-gx0}" height="${gy1-gy0}" rx="10" fill="rgba(75,201,224,.05)" stroke="var(--line2)"/>`;
+  g+=`<text x="${gx0+8}" y="${gy0+15}" fill="var(--faint)" font-size="9">GIRDER (${S.type})</text>`;
+  g+=`<text x="${gx0+6}" y="${gy1-7}" fill="var(--faint)" font-size="8">U/S</text><text x="${gx1-22}" y="${gy1-7}" fill="var(--faint)" font-size="8">D/S</text>`;
+  // upstream / master annotation (master is ~5.1 m upstream, off-plot left)
+  g+=`<text x="${padL-6}" y="18" fill="#9d8bf0" font-size="8.5">◄ master CSYS  (Z=0, ~5.1 m upstream)</text>`;
+  g+=`<text x="${Wsvg-padL}" y="18" fill="#4bc9e0" font-size="8.5" text-anchor="end">beam +Z ►</text>`;
+  // jack CSYS gizmo AT the girder centre (jack centroid, along=0)
+  const [ox,oy]=PX(p0), L=46;
+  const mZa=dot([0,0,1],jackZ),mZc=dot([0,0,1],jackX), mXa=dot([1,0,0],jackZ),mXc=dot([1,0,0],jackX);
+  g+=`<g stroke-width="1.5" font-size="8">`
+   +`<line x1="${ox}" y1="${oy}" x2="${ox+L}" y2="${oy}" stroke="#4bc9e0"/><text x="${ox+L+3}" y="${oy+3}" fill="#4bc9e0">jack-Z</text>`
+   +`<line x1="${ox}" y1="${oy}" x2="${ox}" y2="${oy-L}" stroke="#edb34c"/><text x="${ox-3}" y="${oy-L-4}" fill="#edb34c" text-anchor="middle">jack-X</text>`
+   +`<line x1="${ox}" y1="${oy}" x2="${ox+L*mZa}" y2="${oy-L*mZc}" stroke="#9d8bf0" stroke-dasharray="3 2"/>`
+   +`<line x1="${ox}" y1="${oy}" x2="${ox+L*0.7*mXa}" y2="${oy-L*0.7*mXc}" stroke="#9d8bf0" stroke-dasharray="3 2"/>`
+   +`<circle cx="${ox}" cy="${oy}" r="3" fill="#e6ecf3"/>`
+   +`<text x="${ox+4}" y="${oy+16}" fill="#9d8bf0" font-size="7.5">jack CSYS · girder centre · master +4.06°</text></g>`;
+  // fiducials
+  FIDS.forEach(f=>{const[px,py]=PX(f);g+=`<circle cx="${px}" cy="${py}" r="2.1" fill="var(--faint)"/>`;});
+  // surge/sway stages
+  HENC.forEach((e,i)=>{const[px,py]=PX(e.p);const col=e.kind==='surge'?'#4ecf9e':'#edb34c';
+    g+=`<rect x="${px-4}" y="${py-4}" width="8" height="8" fill="none" stroke="${col}" stroke-width="1.3" transform="rotate(45 ${px} ${py})"/>`;
+    if(!pointsView && S.deltas){const dm=e.sign*dH[i]; const len=Math.max(-52,Math.min(52,dm*24));
+      const x2=px+(e.kind==='surge'?len:0), y2=py+(e.kind==='sway'?-len:0);
+      if(Math.abs(dm)>0.01){g+=`<line x1="${px}" y1="${py}" x2="${x2}" y2="${y2}" stroke="${col}" stroke-width="2"/>`;
+        const a=Math.atan2(y2-py,x2-px);g+=`<polygon points="${x2},${y2} ${x2-8*Math.cos(a-.4)},${y2-8*Math.sin(a-.4)} ${x2-8*Math.cos(a+.4)},${y2-8*Math.sin(a+.4)}" fill="${col}"/>`;}
+      g+=`<text x="${px}" y="${py+(e.kind==='surge'?-9:16)}" fill="${col}" font-size="8" text-anchor="middle">${dm>=0?'+':''}${dm.toFixed(2)}</text>`;}});
+  // jacks
+  const jackLabel = (j) => {
+    if (j.id.startsWith('J_US_')) return `US·${j.id.endsWith('_IN') ? 'IN' : 'OUT'}`;
+    if (j.id.startsWith('J_DS_')) return `DS·${j.id.endsWith('_IN') ? 'IN' : 'OUT'}`;
+    return j.id.replace('J_','').replace('_','·');
+  };
+  JACKS.forEach((j,i)=>{const[px,py]=PX(j.p);let ring='#4bc9e0',lbl='';
+    if(!pointsView && S.deltas){const d=dV[i];ring=d>0?'#edb34c':'#4ecf9e';lbl=`${d>0?'▼':'▲'}${Math.abs(d).toFixed(2)}`;}
+    g+=`<circle cx="${px}" cy="${py}" r="8" fill="rgba(75,201,224,.12)" stroke="${ring}" stroke-width="2"/><circle cx="${px}" cy="${py}" r="2" fill="#4bc9e0"/>`;
+    g+=`<text x="${px}" y="${py-12}" fill="var(--muted)" font-size="7" text-anchor="middle">${jackLabel(j)}</text>`;
+    if(lbl)g+=`<text x="${px}" y="${py+19}" fill="${ring}" font-size="8.5" font-weight="600" text-anchor="middle">${lbl}</text>`;});
+  // survey-delta overlay: correction vector required at each fiducial
+  if(pointsView && S.err){
+    const m=toMaster(S.err); const t=[-m[0],-m[1],-m[2]], th=[-m[3],-m[4],-m[5]]; // correction = -error
+    FIDS.forEach(n=>{const r=sub(n,p0);
+      const disp=[t[0]+(th[1]*r[2]-th[2]*r[1]), t[1]+(th[2]*r[0]-th[0]*r[2]), t[2]+(th[0]*r[1]-th[1]*r[0])];
+      const da=dot(disp,jackZ), dc=dot(disp,jackX), dy=disp[1];
+      const [px,py]=PX(n); const sc=32,cap=60;
+      const x2=px+Math.max(-cap,Math.min(cap,da*sc)), y2=py-Math.max(-cap,Math.min(cap,dc*sc));
+      const mag=Math.hypot(da,dc);
+      if(mag>0.02){g+=`<line x1="${px}" y1="${py}" x2="${x2}" y2="${y2}" stroke="#4bc9e0" stroke-width="1.8"/>`;
+        const a=Math.atan2(y2-py,x2-px);g+=`<polygon points="${x2},${y2} ${x2-7*Math.cos(a-.4)},${y2-7*Math.sin(a-.4)} ${x2-7*Math.cos(a+.4)},${y2-7*Math.sin(a+.4)}" fill="#4bc9e0"/>`;}
+      g+=`<circle cx="${px}" cy="${py}" r="2.6" fill="#4bc9e0"/>`;
+      const yc=Math.abs(dy)<0.02?'var(--faint)':(dy<0?'#4ecf9e':'#edb34c');
+      g+=`<text x="${px}" y="${py-6}" fill="${yc}" font-size="7.5" text-anchor="middle">${dy>=0?'▲':'▼'}${Math.abs(dy).toFixed(2)}Y</text>`;});
+    g+=`<text x="${padL}" y="${Hsvg-8}" fill="var(--muted)" font-size="8">arrows = in-plane correction at each survey point · ▲▼ = vertical (Y) · move measured → nominal</text>`;
+  }
+  g+=`</svg>`; return g;
+}
+
+function create3DScene(){
+  const host = $('schem3dHost');
+  if (!host) return;
+  host.innerHTML = `
+    <canvas id="girder3dCanvas"></canvas>
+    <div class="viewport-hint">drag to orbit · wheel zoom</div>
+    <div class="scale-panel">
+      <button id="panModeBtn" class="pan-toggle" type="button">Pan: Off</button>
+      <button id="alignModelBtn" class="pan-toggle" type="button">Model frame: points</button>
+      <span class="swatch"></span>
+      <label for="vectorScaleSlider" style="color:var(--muted)">Δ scale</label>
+      <input id="vectorScaleSlider" type="range" min="10" max="10000" step="50" value="150">
+      <span id="vectorScaleLabel">150×</span>
+      <span style="width:8px;display:inline-block"></span>
+      <label for="modelOpacitySlider" style="color:var(--muted)">Model</label>
+      <input id="modelOpacitySlider" type="range" min="10" max="100" step="5" value="100">
+      <span id="modelOpacityLabel">100%</span>
+    </div>
+  `;
+
+  const canvas = document.getElementById('girder3dCanvas');
+  const slider = document.getElementById('vectorScaleSlider');
+  const scaleLabel = document.getElementById('vectorScaleLabel');
+  const opacitySlider = document.getElementById('modelOpacitySlider');
+  const opacityLabel = document.getElementById('modelOpacityLabel');
+  const panBtn = document.getElementById('panModeBtn');
+  const state = { vectorScale: 150, panEnabled: true, modelOpacity: 1.0, alignModel: true };
+  let modelMesh = null;
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x0b0f14);
+  scene.fog = new THREE.Fog(0x0b0f14, 4000, 18000);
+
+  const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 50000);
+  camera.position.set(4200, 2500, 9200);
+
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setClearColor(0x0b0f14, 0.0);
+  // r128 API: outputEncoding/sRGBEncoding (outputColorSpace/SRGBColorSpace are r152+)
+  if (THREE.sRGBEncoding !== undefined) renderer.outputEncoding = THREE.sRGBEncoding;
+
+  const controls = new THREE.OrbitControls(camera, canvas);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.enablePan = true;
+  controls.enableZoom = true;
+  controls.enableRotate = true;
+  controls.enableOrbit = true;
+  controls.mouseButtons = {
+    LEFT: THREE.MOUSE.ROTATE,
+    MIDDLE: THREE.MOUSE.ROTATE,
+    RIGHT: THREE.MOUSE.ROTATE
+  };
+  controls.target.set(0, -500, 5000);
+  canvas.oncontextmenu = (event) => event.preventDefault();
+
+  function resetCreoMouseMode() {
+    controls.mouseButtons = {
+      LEFT: THREE.MOUSE.ROTATE,
+      MIDDLE: THREE.MOUSE.ROTATE,
+      RIGHT: THREE.MOUSE.ROTATE
+    };
+    controls.enablePan = state.panEnabled;
+  }
+
+  function setCreoMouseMode(event) {
+    const isShift = !!event.shiftKey;
+    const isCtrl = !!event.ctrlKey;
+    if (event.button === 1) {
+      if (isShift) {
+        controls.mouseButtons = {
+          LEFT: THREE.MOUSE.ROTATE,
+          MIDDLE: THREE.MOUSE.PAN,
+          RIGHT: THREE.MOUSE.ROTATE
+        };
+      } else if (isCtrl) {
+        controls.mouseButtons = {
+          LEFT: THREE.MOUSE.ROTATE,
+          MIDDLE: THREE.MOUSE.ZOOM,
+          RIGHT: THREE.MOUSE.ROTATE
+        };
+      } else {
+        controls.mouseButtons = {
+          LEFT: THREE.MOUSE.ROTATE,
+          MIDDLE: THREE.MOUSE.ROTATE,
+          RIGHT: THREE.MOUSE.ROTATE
+        };
+      }
+      controls.enablePan = state.panEnabled || isShift;
+    }
+  }
+
+  canvas.addEventListener('pointerdown', (event) => {
+    if (event.button === 1) setCreoMouseMode(event);
+  });
+  canvas.addEventListener('pointerup', resetCreoMouseMode);
+  canvas.addEventListener('pointerleave', resetCreoMouseMode);
+  canvas.addEventListener('pointercancel', resetCreoMouseMode);
+  canvas.addEventListener('dblclick', (event) => {
+    if (event.button === 1 || !event.button) {
+      fitModelToView(modelGroup);
+    }
+  });
+
+  const hemi = new THREE.HemisphereLight(0xcfeaff, 0x0b0f14, 1.3);
+  scene.add(hemi);
+  const dir = new THREE.DirectionalLight(0xffffff, 1.1);
+  dir.position.set(6000, 9000, 3000);
+  scene.add(dir);
+
+  let grid = new THREE.GridHelper(22000, 24, 0x4bc9e0, 0x3b4c5b);
+  grid.position.y = -1500;
+  scene.add(grid);
+
+  function setGridToModel(model) {
+    const box = new THREE.Box3().setFromObject(model || modelGroup);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    const maxExtent = Math.max(size.x, size.z, 2000);
+    const margin = Math.max(600, maxExtent * 0.4);
+    const gridSize = Math.ceil((maxExtent + margin * 2) / 100) * 100;
+    const floorY = Math.min(box.min.y - 120, -1500);
+    if (grid) scene.remove(grid);
+    grid = new THREE.GridHelper(gridSize, 24, 0x4bc9e0, 0x3b4c5b);
+    grid.position.set(center.x, floorY, center.z);
+    scene.add(grid);
+  }
+
+  const axisGroup = new THREE.Group();
+  const axes = [
+    { vec: new THREE.Vector3(2000, 0, 0), color: 0xef6a5f, label: 'X' },
+    { vec: new THREE.Vector3(0, 2000, 0), color: 0x4ecf9e, label: 'Y' },
+    { vec: new THREE.Vector3(0, 0, 2000), color: 0x4bc9e0, label: 'Z' }
+  ];
+  axes.forEach((axis) => {
+    const arrow = new THREE.ArrowHelper(axis.vec.clone().normalize(), new THREE.Vector3(), axis.vec.length(), axis.color, 180, 80);
+    arrow.line.material.linewidth = 3;
+    arrow.cone.material.linewidth = 3;
+    arrow.cone.material.depthTest = false;
+    arrow.cone.material.depthWrite = false;
+    arrow.line.material.depthTest = false;
+    arrow.line.material.depthWrite = false;
+    axisGroup.add(arrow);
+    const sprite = makeAxisLabel(axis.label, axis.color);
+    sprite.position.copy(axis.vec.clone().multiplyScalar(1.12));
+    axisGroup.add(sprite);
+  });
+  scene.add(axisGroup);
+
+  function makeAxisLabel(text, color) {
+    const canvas2d = document.createElement('canvas');
+    canvas2d.width = 128;
+    canvas2d.height = 128;
+    const ctx = canvas2d.getContext('2d');
+    ctx.clearRect(0, 0, canvas2d.width, canvas2d.height);
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 68px IBM Plex Mono';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = `#${color.toString(16).padStart(6, '0')}`;
+    ctx.fillText(text, 64, 64);
+    const tex = new THREE.CanvasTexture(canvas2d);
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+    const sprite = new THREE.Sprite(mat);
+    sprite.scale.set(220, 220, 1);
+    return sprite;
+  }
+
+  const modelGroup = new THREE.Group();
+  scene.add(modelGroup);
+
+  function buildArrow(origin, vector, colorHex, labelText) {
+    const baseLen = Math.max(0.1, vector.length());
+    const headLen = Math.max(4, baseLen * 0.22);
+    const headW = Math.max(2, baseLen * 0.12);
+    const dir = vector.clone().normalize();
+    const arrow = new THREE.ArrowHelper(dir, origin.clone(), baseLen, colorHex, headLen, headW);
+    arrow.setLength(baseLen, headLen, headW);
+    arrow.setDirection(dir);
+    arrow.cone.material.transparent = true;
+    arrow.cone.material.opacity = 0.95;
+    arrow.cone.material.depthTest = false;
+    arrow.cone.material.depthWrite = false;
+    arrow.line.material.transparent = true;
+    arrow.line.material.opacity = 0.95;
+    arrow.line.material.depthTest = false;
+    arrow.line.material.depthWrite = false;
+    arrow.renderOrder = 999;
+    arrow.userData.labelText = labelText || '';
+    arrow.userData.vector = vector.clone();
+    return arrow;
+  }
+
+  const overlayGroup = new THREE.Group();
+  overlayGroup.renderOrder = 999;
+  scene.add(overlayGroup);
+  window.__girder3d = { scene, camera, controls, modelGroup, overlayGroup };
+  window.__girder3d.updateVectorOverlay = updateVectorOverlay;
+
+  function updateVectorOverlay() {
+    overlayGroup.clear();
+    const active = [];
+
+    const demoErr = S && S.err ? S.err : { sway: 0.12, heave: -0.18, surge: 0.28, roll: 0.03, pitch: -0.04, yaw: 0.06 };
+    const demoDeltas = S && S.deltas ? S.deltas : [0.5, -0.6, 0.7, -0.4, 0.8, -0.9, 0.7, -0.5];
+
+    if (demoErr) {
+      const m = toMaster(demoErr);
+      const t = new THREE.Vector3(-m[0], -m[1], -m[2]);
+      const th = new THREE.Vector3(-m[3], -m[4], -m[5]);
+      FIDS.forEach((fid, i) => {
+        const r = new THREE.Vector3().subVectors(new THREE.Vector3(...fid), new THREE.Vector3(...p0));
+        const disp = new THREE.Vector3(
+          t.x + (th.y * r.z - th.z * r.y),
+          t.y + (th.z * r.x - th.x * r.z),
+          t.z + (th.x * r.y - th.y * r.x)
+        );
+        const len = disp.length();
+        if (len > 0.01) {
+          const vec = disp.clone().multiplyScalar(40 * (state.vectorScale / 150));
+          active.push(buildArrow(new THREE.Vector3(...fid), vec, 0x4bc9e0, `Δ${i + 1}`));
+        }
+      });
+    }
+
+    if (demoDeltas) {
+      const dV = demoDeltas.slice(0, 4);
+      const dH = demoDeltas.slice(4, 8);
+      JACKS.forEach((j, i) => {
+        const delta = dV[i] || 0;
+        if (Math.abs(delta) > 0.01) {
+          // Match the plan-view / encoder convention: positive vertical delta is plotted as a downward arrow.
+          const vec = new THREE.Vector3(0, -delta * 0.8 * 40 * (state.vectorScale / 150), 0);
+          active.push(buildArrow(new THREE.Vector3(...j.p), vec, delta >= 0 ? 0xedb34c : 0x4ecf9e, `${delta >= 0 ? '+' : ''}${delta.toFixed(2)} mm`));
+        }
+      });
+      HENC.forEach((enc, i) => {
+        const delta = dH[i] || 0;
+        if (Math.abs(delta) > 0.01) {
+          const dir = new THREE.Vector3(...enc.dir).multiplyScalar(delta * 1.2 * 40 * (state.vectorScale / 150));
+          active.push(buildArrow(new THREE.Vector3(...enc.p), dir, i % 2 === 0 ? 0x4ecf9e : 0xedb34c, `${delta >= 0 ? '+' : ''}${delta.toFixed(2)} mm`));
+        }
+      });
+    }
+
+    active.forEach((item) => overlayGroup.add(item));
+  }
+
+  function fitModelToView(model) {
+    const box = new THREE.Box3().setFromObject(model);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+    const maxDim = Math.max(size.x, size.y, size.z, 1);
+    setGridToModel(model);
+
+    camera.position.set(center.x + maxDim * 0.9, center.y + maxDim * 0.7, center.z + maxDim * 0.95);
+    camera.far = maxDim * 12;
+    camera.updateProjectionMatrix();
+    controls.target.copy(center);
+    controls.update();
+  }
+
+  const loader = new THREE.STLLoader();
+  const stlFile = (GEOM[S.type] || GEOM.MS).stl;
+  state.modelOpacity = 0.68;                       // match the material below
+  opacitySlider.value = 68; opacityLabel.textContent = '68%';
+  loader.load(
+    './' + stlFile,
+    (geometry) => {
+      const material = new THREE.MeshStandardMaterial({
+        color: 0xE7D9A2,
+        metalness: 0.05,
+        roughness: 0.95,
+        transparent: true,
+        opacity: 0.75
+      });
+      modelMesh = new THREE.Mesh(geometry, material);
+      const am = stlAlignMatrix(GEOM[S.type] || GEOM.MS);
+      if (am && state.alignModel) modelMesh.applyMatrix4(am);
+      modelMesh.userData.alignMatrix = am;
+      modelGroup.add(modelMesh);
+      fitModelToView(modelGroup);
+      updateVectorOverlay();
+    },
+    undefined,
+    () => {
+      // STL not reachable (e.g. file not alongside this page) — carry on without it
+      const g = GEOM[S.type] || GEOM.MS, z = g.zRange || [1300, 8900];
+      const box = new THREE.Mesh(
+        new THREE.BoxGeometry(1000, 530, z[1] - z[0]),
+        new THREE.MeshStandardMaterial({ color: 0xE7D9A2, metalness: 0.05, roughness: 0.95,
+                                         transparent: true, opacity: 0.28, wireframe: false }));
+      box.position.set(p0[0], -715, (z[0] + z[1]) / 2);
+      box.rotation.y = Math.atan2(jackZ[0], jackZ[2]);
+      modelMesh = box; modelGroup.add(box);
+      fitModelToView(modelGroup); updateVectorOverlay();
+      const hint = host.querySelector('.viewport-hint');
+      if (hint) hint.textContent = `drag to orbit · wheel zoom · ${stlFile} not found — showing envelope`;
+    }
+  );
+
+  slider.addEventListener('input', (event) => {
+    state.vectorScale = Number(event.target.value);
+    scaleLabel.textContent = `${state.vectorScale}×`;
+    updateVectorOverlay();
+  });
+
+  opacitySlider.addEventListener('input', (event) => {
+    state.modelOpacity = Number(event.target.value) / 100;
+    opacityLabel.textContent = `${event.target.value}%`;
+    if (modelMesh) {
+      modelMesh.traverse((obj) => {
+        if (obj.isMesh && obj.material) {
+          obj.material.transparent = true;
+          obj.material.opacity = state.modelOpacity;
+        }
+      });
+    }
+  });
+
+  const alignBtn = document.getElementById('alignModelBtn');
+  alignBtn.addEventListener('click', () => {
+    if (!modelMesh || !modelMesh.userData.alignMatrix) return;
+    state.alignModel = !state.alignModel;
+    const am = modelMesh.userData.alignMatrix;
+    const inv = am.clone().invert();
+    modelMesh.applyMatrix4(state.alignModel ? am : inv);
+    alignBtn.textContent = 'Model frame: ' + (state.alignModel ? 'points' : 'CAD/sheet');
+    alignBtn.classList.toggle('active', !state.alignModel);
+    render3D();
+  });
+
+  panBtn.classList.toggle('active', state.panEnabled);
+  panBtn.textContent = 'Pan: On';
+  controls.enablePan = state.panEnabled;
+
+  panBtn.addEventListener('click', () => {
+    state.panEnabled = !state.panEnabled;
+    panBtn.classList.toggle('active', state.panEnabled);
+    panBtn.textContent = state.panEnabled ? 'Pan: On' : 'Pan: Off';
+    controls.enablePan = state.panEnabled;
+  });
+
+  function resize3D() {
+    const w = host.clientWidth;
+    const h = host.clientHeight;
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    renderer.setSize(w, h, false);
+  }
+
+  function render3D() {
+    controls.update();
+    renderer.render(scene, camera);
+  }
+
+  resize3D();
+  worldResize = resize3D;
+  updateVectorOverlay();
+  renderer.setAnimationLoop(render3D);
+  window.addEventListener('resize', resize3D);
+}
+
+// ============ render ============
+const $=id=>document.getElementById(id);
+const fmt=(v,d)=>(v>=0?'+':'')+v.toFixed(d);
+function render(){
+  const info=TYPES[S.type];
+  $('rIter').innerHTML=S.iter===0?'—':`${S.iter}`;
+  // stepper
+  const ai=activeStepIndex();
+  const steps=stepList();
+  $('stepper').innerHTML=steps.map((st,i)=>{const cls=i<ai?'done':(i===ai?'active':'');const m=i<ai?'✓':(i+1);
+    return `<div class="step ${cls}"><div class="dot">${m}</div><div class="lbl">${st.label}</div>${i<steps.length-1?'<div class="bar"></div>':''}</div>`;}).join('');
+  // schematic
+  const is3d = S.schemView === '3d';
+  $('schemHost').innerHTML = is3d ? '' : buildSchematic();
+  $('schem3dHost').classList.toggle('hidden', !is3d);
+  $('schemHost').classList.toggle('hidden', is3d);
+  if (is3d) {
+    // rebuild when the girder type changes so the correct STL is loaded
+    if (!$('girder3dCanvas') || window.__girder3dType !== S.type) {
+      window.__girder3dType = S.type; create3DScene();
+    }
+    else if (window.__girder3d && window.__girder3d.updateVectorOverlay) window.__girder3d.updateVectorOverlay();
+  }
+  const sch=$('schemChip');
+  if(GEOMWARN){sch.className='chip warn';
+    sch.textContent=`${S.type} — CAD/point frame differ ${GEOMWARN.dYaw.toFixed(1)} mrad, ${GEOMWARN.dOrg.toFixed(0)} mm (model re-placed)`;}
+  else if(info.real){sch.className='chip ok';sch.textContent=S.type+' geometry ✓';}
+  else{sch.className='chip prov';sch.textContent=S.type+' — STL only, MS layout';}
+  // DOF
+  $('dofList').innerHTML=AXES.map((a,i)=>{
+    const val=S.err?S.err[a.key]:null; const st=val===null?'idle':statusOf(a.key,val);
+    const dec=a.unit==='mrad'?3:2; const span=1.6*a.tol;
+    const pos=val===null?0:Math.max(-1,Math.min(1,val/span)); const left=50+pos*50;
+    const zoneW=(a.tol/span)*50; const pct=val===null?'—':Math.round(Math.abs(val)/a.tol*100)+'%';
+    return `<div class="dof"><div class="pr mono">P${i+1}</div>
+      <div class="name"><div class="t">${a.name}</div><div class="s">${a.sym}</div></div>
+      <div class="meter"><div class="zone" style="left:${50-zoneW}%;width:${zoneW*2}%"></div><div class="datum"></div>
+        <div class="marker bg-${st}" style="left:${left}%;${val===null?'opacity:.3':''}"></div></div>
+      <div class="val"><div class="num mono c-${st}">${val===null?'—':fmt(val,dec)}</div>
+        <div class="pct mono">${pct} · ±${a.tol} ${a.unit}</div></div></div>`;}).join('');
+  const sc=$('stateChip');
+  if(!S.err){sc.className='chip idle';sc.textContent='Awaiting survey';}
+  else if(S.phase==='converged'){sc.className='chip ok';sc.textContent='All axes in tolerance';}
+  else if(allInTol(S.err)){sc.className='chip ok';sc.textContent='Within tolerance';}
+  else{sc.className='chip bad';sc.textContent='Adjustment required';}
+  // distortion
+  const WARN=0.003,STOP=0.005;
+  $('distList').innerHTML=[['WARP','vertical twist',S.warp],['STRETCH','differential surge',S.stretch]].map(([nm,sub,v])=>{
+    const st=v<=WARN?'ok':(v<=STOP?'warn':'bad');const wpc=Math.min(100,v/(STOP*1.2)*100);
+    return `<div class="dist"><div class="top"><span class="nm">${nm}</span><span class="rd mono c-${st}">${v.toFixed(4)}</span></div>
+      <div class="track"><div class="fill bg-${st}" style="width:${wpc}%"></div>
+        <div class="warnmark" style="left:${WARN/(STOP*1.2)*100}%"></div><div class="stopmark" style="left:${STOP/(STOP*1.2)*100}%"></div></div>
+      <div class="thr"><span>${sub}</span><span>warn ${WARN} · stop ${STOP} mm</span></div></div>`;}).join('');
+  // fit
+  const fc=$('fitChip');
+  if(S.fit){fc.className='chip ok';fc.textContent=S.uploaded?'Fit OK · uploaded':'Fit OK';
+    $('fFid').textContent=`${S.fit.fid} / ${info.fid}`;$('fRms').textContent=S.fit.rms.toFixed(3)+' mm';
+    $('fMax').textContent=S.fit.max.toFixed(3)+' mm';$('fUsmn').textContent=S.fit.usmn==null?'— (from tracker)':'±'+S.fit.usmn.toFixed(3)+' mm';}
+  else{fc.className='chip idle';fc.textContent='—';['fFid','fRms','fMax','fUsmn'].forEach(id=>$(id).textContent='—');}
+  // encoder deltas (three blocks)
+  const showD=!!S.plan; const ec=$('encChip');
+  ec.className=showD?'chip warn':'chip idle';ec.textContent=showD?'Deltas ready':'Not solved';
+  const flatA=S.phase==='solved', vertA=S.phase==='flatten_done', horzA=S.phase==='vertical_done';
+  const combinedVertical = !!S.combineVertical;
+  const flatState = combinedVertical ? (S.phase==='solved' || S.phase==='flatten_done' || S.phase==='vertical_done') : flatA;
+  const vertState = combinedVertical ? (S.phase==='solved' || S.phase==='flatten_done' || S.phase==='vertical_done') : vertA;
+  $('setFlat').className='encset'+(flatState?' active':(showD?'':' muted'));
+  $('setVert').className='encset'+(vertState?' active':(showD?'':' muted'));
+  $('setHorz').className='encset'+(horzA?' active':(showD?'':' muted'));
+  $('lblFlat').className='set-label'+(flatState?' active':'');
+  $('lblVert').className='set-label'+(vertState?' active':'');
+  $('lblHorz').className='set-label'+(horzA?' active':'');
+  const encRow=(id,mag,note,cls)=>`<div class="enc"><span class="id">${id}</span>
+    <span class="arrow ${cls}">${mag>0?'▼':(mag<0?'▲':'·')}</span>
+    <span class="mag mono">${fmt(mag,3)}</span><span class="note">${note}</span></div>`;
+  if(!showD){
+    const ph=`<div style="font-size:11px;color:var(--faint);padding:6px 0">Solve to generate deltas.</div>`;
+    $('flatRows').innerHTML=ph;$('vertRows').innerHTML=ph;$('horzRows').innerHTML=ph;
+  } else {
+    const P=S.plan;
+    const pairBlock=blk=>{
+      let h=`<div style="font-size:9.5px;letter-spacing:.06em;color:var(--cyan);margin:2px 0 4px">${blk.first.label} — move first · stop at intermediate</div>`;
+      blk.first.enc.forEach((id,i)=>{const inter=blk.first.inter[i],fin=blk.first.fin[i];
+        h+=encRow(id,inter,`mm · <span style="color:var(--faint)">final ${fmt(fin,3)}</span>`,Math.abs(inter)<0.01?'c-idle':'c-ok');});
+      h+=`<div style="font-size:9.5px;letter-spacing:.06em;color:var(--cyan);margin:8px 0 4px">${blk.second.label} — move last · final target</div>`;
+      blk.second.enc.forEach((id,i)=>{const fin=blk.second.fin[i];
+        h+=encRow(id,fin,'mm · final',Math.abs(fin)<0.01?'c-idle':'c-ok');});
+      return h;
+    };
+    if(combinedVertical){
+      // ONE panel only — duplicating it reads as two separate jack adjustments
+      $('flatRows').innerHTML =
+        '<div style="font-size:9.5px;letter-spacing:.06em;color:var(--cyan);margin:2px 0 4px">'+
+        'Roll, pitch and heave applied together — one pass on the jacks</div>' + pairBlock(P.combined);
+      $('setVert').style.display='none';
+      $('lblFlat').innerHTML='<span class="tag">STEP 1</span><span class="txt">Vertical — combined flatten + heave</span>';
+      $('lblHorz').innerHTML='<span class="tag">STEP 2</span><span class="txt">Horizontal — along jack axes</span>';
+    } else {
+      $('setVert').style.display='';
+      $('lblHorz').innerHTML='<span class="tag">STEP 3</span><span class="txt">Horizontal — along jack axes</span>';
+      $('flatRows').innerHTML=pairBlock(P.flatten);
+      $('vertRows').innerHTML=pairBlock(P.heave);
+      $('lblFlat').innerHTML='<span class="tag">STEP 1</span><span class="txt">Flatten — level pitch/roll · sequential pairs</span>';
+      $('lblVert').innerHTML='<span class="tag">STEP 2</span><span class="txt">Vertical heave · sequential pairs</span>';
+    }
+    const hlab=['SURGE_US','SWAY_US','SURGE_DS','SWAY_DS'];
+    $('horzRows').innerHTML=hlab.map((id,i)=>{const d=P.horiz[i];
+      return `<div class="enc"><span class="id">${id}</span><span class="arrow ${Math.abs(d)<0.01?'c-idle':'c-ok'}">${d>=0?'▶':'◀'}</span>
+        <span class="mag mono">${fmt(d,3)}</span><span class="note">mm · shift</span></div>`;}).join('');
+  }
+  // pairing / order toggle states
+  const groups=pairGroups(S.pairing);
+  document.querySelectorAll('.pbtn').forEach(b=>b.setAttribute('aria-pressed',b.dataset.pair===S.pairing?'true':'false'));
+  document.querySelectorAll('.fbtn').forEach(b=>{const idx=+b.dataset.first;b.textContent=groups[idx].label;b.setAttribute('aria-pressed',idx===S.firstIdx?'true':'false');});
+  document.querySelectorAll('.vmode').forEach(b=>b.setAttribute('aria-pressed',b.dataset.vertical=== (S.combineVertical ? 'combined' : 'sequential') ? 'true':'false'));
+  // convergence
+  const cc=$('convChip');
+  if(S.history.length){const last=S.history[S.history.length-1];
+    if(S.phase==='converged'){cc.className='chip ok';cc.textContent='Converged';}
+    else{cc.className='chip warn';cc.textContent=`peak ${Math.round(last)}%`;}}
+  else{cc.className='chip idle';cc.textContent='—';}
+  const maxH=Math.max(100,...S.history);
+  $('histBars').innerHTML=S.history.length?S.history.map(p=>{const h=Math.max(3,p/maxH*100);
+    return `<div class="hbar ${p<=100?'ok':''}" style="height:${h}%"><span>${Math.round(p)}%</span></div>`;}).join('')
+    :`<div style="font-size:11px;color:var(--faint);align-self:center;margin:auto">No surveys yet.</div>`;
+  $('histX').innerHTML=S.history.map((p,i)=>`<div>#${i+1}</div>`).join('');
+  // prompt
+  const pt=$('promptTitle'),ps=$('promptSub'),bp=$('btnPrimary');bp.className='btn primary';
+  const provi=info.real?'':' · ⚠ awaiting ref-point data';
+  const map={
+    idle:['Load the initial laser-tracker survey to begin.',`${S.type} · ${info.fid} fiducials · girder thermally stable${provi}`,'Load survey'],
+    surveyed:['Survey fitted. Solve the best-fit correction to target.','Weighted least-squares at evaluation points · deltas from the MS Jacobian','Solve adjustment'],
+    solved: S.combineVertical
+      ? ['STEP 1 — Vertical. Roll, pitch and heave in a single jack pass: first pair to intermediate, second pair to final.',
+         'One pass on the jacks · encoder ~325 mm off bearing → 0.049 mm/mm cross-shift, so the first pair stops short · watch WARP',
+         'Confirm vertical set applied']
+      : ['STEP 1 — Flatten. Level pitch & roll; first pair to intermediate, then second pair to final.',
+         'Encoder ~325 mm off bearing → 0.049 mm/mm cross-shift; first pair stops short · watch WARP','Confirm flatten applied'],
+    flatten_done:['STEP 2 — Vertical heave. Sequential pairs, first pair stops at intermediate.','Girder already planar; heave carries the same cross-shift','Confirm heave applied'],
+    vertical_done:[(S.combineVertical?'STEP 2':'STEP 3')+' — Horizontal. Sway, yaw, surge along the jack axes.','Absorbs roll-induced X/Y creep · watch STRETCH','Confirm horizontal applied'],
+    horizontal_done:['Verify with EPICS, then re-survey.','Before/after encoder read confirms achieved ≈ commanded','Re-survey'],
+    converged:['All evaluation points within tolerance. Record and reset the rig.','Writes as-left to asset DB · returns jacks to home datum for next girder','Record as-left & reset rig'],
+    reset:['Rig at home datum. Fixture ready for the next girder.','All 8 axes zeroed · full ±6 mm travel · load next unit','Load next girder']};
+  const[a,b,c]=map[S.phase];pt.textContent=a;ps.textContent=b;bp.textContent=c;
+  if(S.phase==='converged')bp.classList.add('gate');
+  document.querySelectorAll('#typeSeg button').forEach(x=>{x.setAttribute('aria-pressed',x.dataset.type===S.type?'true':'false');x.disabled=S.phase!=='idle';});
+  $('btnUpload').style.display=S.phase==='idle'?'':'none';
+  document.querySelectorAll('.vbtn').forEach(b=>b.setAttribute('aria-pressed',b.dataset.view===S.schemView?'true':'false'));
+}
+
+// ============ actions ============
+function advance(){
+  switch(S.phase){
+    case 'idle':{S.iter=1;S.err=seedError(1);const i=TYPES[S.type];
+      S.fit={fid:i.fid,rms:rnd(.018,.024),max:rnd(.03,.05),usmn:rnd(.015,.025)};
+      S.history=[peakPct(S.err)];S.phase='surveyed';break;}
+    case 'surveyed':S.deltas=encoderDeltas(S.err);S.plan=computePlan(S.err,S.pairing,S.firstIdx);S.phase='solved';break;
+    case 'solved':
+      if(S.combineVertical){
+        S.err.roll*=0.05;S.err.pitch*=0.07;S.err.heave*=0.08;S.err.sway+=rnd(0.08,0.16);
+        S.warp=rnd(.0008,.0016);S.phase='vertical_done';
+      } else {
+        S.err.roll*=0.05;S.err.pitch*=0.07;S.err.sway+=rnd(0.08,0.16);S.err.heave+=rnd(-0.03,0.03);
+        S.warp=rnd(.0008,.0016);S.phase='flatten_done';
+      }
+      break;
+    case 'flatten_done':
+      if(S.combineVertical){ S.phase='vertical_done'; break; }
+      S.err.heave*=0.08;S.phase='vertical_done';break;
+    case 'vertical_done': // horizontal applied
+      S.err.sway*=0.07;S.err.yaw*=0.08;S.err.surge*=0.10;S.stretch=rnd(.0009,.0018);S.phase='horizontal_done';break;
+    case 'horizontal_done':{S.iter+=1;S.err=seedError(S.iter);const i=TYPES[S.type];
+      S.fit={fid:i.fid,rms:rnd(.015,.021),max:rnd(.02,.04),usmn:rnd(.015,.022)};
+      S.history.push(peakPct(S.err));S.deltas=null;S.plan=null;S.phase=allInTol(S.err)?'converged':'surveyed';break;}
+    case 'converged':S.phase='reset';break;
+    case 'reset':{const t=S.type;initState(t);break;}
+  }
+  render();
+}
+$('btnPrimary').addEventListener('click',advance);
+$('btnReset').addEventListener('click',()=>{const t=S.type;initState(t);render();});
+document.querySelectorAll('#typeSeg button').forEach(b=>b.addEventListener('click',()=>{if(S.phase!=='idle')return;initState(b.dataset.type);render();}));
+// pairing / first-pair toggles
+document.querySelectorAll('.pbtn').forEach(b=>b.addEventListener('click',()=>{S.pairing=b.dataset.pair;S.firstIdx=0;if(S.err)S.plan=computePlan(S.err,S.pairing,S.firstIdx);render();}));
+document.querySelectorAll('.fbtn').forEach(b=>b.addEventListener('click',()=>{S.firstIdx=+b.dataset.first;if(S.err)S.plan=computePlan(S.err,S.pairing,S.firstIdx);render();}));
+document.querySelectorAll('.vmode').forEach(b=>b.addEventListener('click',()=>{S.combineVertical = b.dataset.vertical === 'combined'; if(S.err)S.plan=computePlan(S.err,S.pairing,S.firstIdx); render();}));
+document.querySelectorAll('.vbtn').forEach(b=>b.addEventListener('click',()=>{S.schemView=b.dataset.view;render();}));
+// CSV upload -> real best-fit -> real deltas
+$('btnUpload').addEventListener('click',()=>$('csvInput').click());
+$('csvInput').addEventListener('change',ev=>{const f=ev.target.files[0];if(!f)return;
+  const r=new FileReader();r.onload=()=>loadMeasuredCSV(r.result);r.readAsText(f);ev.target.value='';});
+function loadMeasuredCSV(text){
+  // read every line's last 3 numeric fields as X,Y,Z (name/index optional)
+  const pts=[];
+  text.split(/\r?\n/).forEach(line=>{
+    const nums=line.split(/[,\t; ]+/).map(Number).filter(n=>isFinite(n));
+    if(nums.length>=3) pts.push(nums.slice(-3));
+  });
+  if(pts.length<3){alert('Could not read ≥3 XYZ rows. Expected "X,Y,Z" per line (a name/index column is fine).');return;}
+  // match each nominal reference to its nearest uploaded point within a 10 mm gate
+  const GATE=10, meas={}; let matched=0, worst=0;
+  for(const name of Object.keys(NOMINAL)){const ref=NOMINAL[name]; let best=null,bd=1e9;
+    for(const q of pts){const d=Math.hypot(q[0]-ref[0],q[1]-ref[1],q[2]-ref[2]); if(d<bd){bd=d;best=q;}}
+    if(best&&bd<=GATE){meas[name]=best;matched++;worst=Math.max(worst,bd);}}
+  if(matched<3){alert('Matched '+matched+' points within '+GATE+' mm of the MS reference points (need ≥3).\nCheck the file is in the master frame and points are within 10 mm of target.');return;}
+  const fit=fitPose(meas);
+  S.iter=1;S.err=fit.err;S.uploaded=true;
+  S.fit={fid:matched,rms:fit.rms,max:fit.max,usmn:null};
+  S.history=[peakPct(S.err)];S.deltas=null;S.plan=null;S.phase='surveyed';render();
+}
+render();
+</script>
+</body>
+</html>
