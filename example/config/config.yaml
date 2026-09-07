@@ -42,6 +42,48 @@ epics:
   # Optional per-encoder engineering-unit scaling (counts -> mm).
   scale: {}
 
+  # Channel Access client settings. These become EPICS_CA_* environment
+  # variables before the CA library loads; anything already set in the pod's
+  # environment wins, so a deployment can override any of them without an edit
+  # here.
+  ca:
+    # The DEB build area serves Channel Access on 6064, not the CA default of
+    # 5064 - the same isolation DLS `. changeports 6064` gives you. A client
+    # left on 5064 finds nothing, and says so only as a timeout.
+    #
+    # EPICS_CA_REPEATER_PORT is derived from this as server_port + 1 (6065)
+    # unless repeater_port is set explicitly. Base does NOT derive it - its
+    # default is a flat 5065 whatever the server port - so leaving it out here
+    # is the safe choice, not an omission.
+    server_port: 6064
+
+    # --- Reaching the IOCs from inside the cluster -------------------------
+    #
+    # As written, this searches by broadcast on 6064 - the same thing a
+    # workstation does. That is right for `check` on the command line, and for
+    # a pod using hostNetwork, which is on the machine network like any other
+    # host and so hears the IOCs' replies without any further help.
+    #
+    # A pod NOT using hostNetwork is on the cluster network, where a broadcast
+    # reaches no IOC. Route the search through the namespace's CA gateway
+    # instead (deb-services/services/deb-epics-gateways exists for exactly
+    # this) and turn the broadcast off:
+    #
+    #   auto_address_list: "NO"
+    #   name_servers: "deb-epics-gateways:5064"
+    #
+    # CONFIRM THE GATEWAY'S OWN PORT before using that. 6064 above is the port
+    # the IOCs serve on, which is the gateway's upstream problem, not the
+    # client's; the port here is the one the gateway listens on for clients.
+    # Given with no port, a name server entry inherits server_port - so if the
+    # gateway does listen on 5064 it must be written out, as above.
+    #
+    # Or name the IOC's address directly, where that address is stable (a
+    # hostNetwork pod's is the node's, and moves when the pod is rescheduled):
+    #
+    #   auto_address_list: "NO"
+    #   address_list: "172.23.x.x"
+
 # ---------------------------------------------------------------------------
 # Room air temperature.
 #

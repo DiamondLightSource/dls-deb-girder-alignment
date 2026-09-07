@@ -161,6 +161,50 @@ Every encoder PV is built from `epics.domain`
 they are one array covering the whole hall, all under `TS01C`, and the bays map
 onto overlapping subsets of it (bay 1 = sensors 1–3, bay 2 = 2–5, bay 3 = 4–6).
 
+### Channel Access
+
+CA settings go under `epics.ca` in the config file and are put into the
+environment before the CA library loads.
+
+```yaml
+epics:
+  ca:
+    server_port: 6064            # the DEB build area, not the 5064 default
+    # repeater_port: 6065        # derived as server_port + 1 when omitted
+    # auto_address_list: "NO"    # switch the broadcast search off
+    # name_servers: "deb-epics-gateways:5064"   # ... and go via the CA gateway
+    # address_list: "172.23.x.x"                # ... or name the IOC directly
+```
+
+| key | variable | notes |
+|---|---|---|
+| `server_port` | `EPICS_CA_SERVER_PORT` | the port the **IOCs** serve on |
+| `repeater_port` | `EPICS_CA_REPEATER_PORT` | defaults to `server_port + 1` |
+| `auto_address_list` | `EPICS_CA_AUTO_ADDR_LIST` | `"NO"` disables broadcast search |
+| `address_list` | `EPICS_CA_ADDR_LIST` | explicit search addresses |
+| `name_servers` | `EPICS_CA_NAME_SERVERS` | search over TCP via a gateway |
+| `connection_timeout` | `EPICS_CA_CONN_TMO` | |
+| `max_array_bytes` | `EPICS_CA_MAX_ARRAY_BYTES` | |
+
+Any other setting can be given by its full `EPICS_*` name instead of a key from
+this table.
+
+Two things are easy to get wrong here:
+
+- **The repeater port does not follow the server port by itself.** EPICS Base
+  defaults `EPICS_CA_REPEATER_PORT` to a flat 5065 whatever the server port is.
+  Setting `server_port` alone derives 6065 for you, which is what DLS
+  `. changeports 6064` does by hand — so leave `repeater_port` out unless you
+  really do mean something else.
+- **A broadcast search only works where broadcasts reach the IOCs**: a
+  workstation on the machine network, or a pod using `hostNetwork`. A pod on
+  the ordinary cluster network needs `auto_address_list: "NO"` plus either
+  `name_servers` pointing at the namespace's CA gateway or an explicit
+  `address_list`.
+
+An `EPICS_CA_*` variable already set in the environment always wins, so a
+deployment can repoint the tool without editing the config.
+
 ### Environment variables
 
 All override the config file, for deployment:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sys
 import time
 from argparse import ArgumentParser, Namespace
@@ -52,6 +53,19 @@ def _load(args: Namespace) -> config.Config:
     return cfg
 
 
+def _ca_summary(cfg: config.Config) -> str:
+    """The CA settings in force, so a timeout can be diagnosed from the log.
+
+    Every one of these is silent when wrong: a client on the wrong port, or
+    with no route to the IOCs, reports the same timeout as a dead IOC.
+    """
+    env = {name: os.environ.get(name) for name in config.CA_KEYS.values()}
+    shown = [
+        f"{name.removeprefix('EPICS_CA_').lower()}={v}" for name, v in env.items() if v
+    ]
+    return ", ".join(shown) or "defaults (port 5064, broadcast search)"
+
+
 def serve(args: Namespace) -> None:
     from .server import Service, create_app
 
@@ -74,6 +88,7 @@ def serve(args: Namespace) -> None:
     print(f"  config       : {cfg.config_path}")
     print(f"  domain       : {cfg.domain}  (device prefix {cfg.device_prefix})")
     print(f"  live backend : {service.backend.name}")
+    print(f"  channel acc. : {_ca_summary(cfg)}")
     print(f"  geometry rev : {G.GEOMETRY_REVISION}")
     print(f"  serials      : {len(cfg.serials)} in lookup")
     print(f"  sensors      : {len(cfg.sensor_pvs)} temperature PVs")
@@ -101,6 +116,7 @@ def check(args: Namespace) -> None:
     enc = epics_io.EncoderService(cfg.pv_map, backend, cfg.scale)
     temp = epics_io.TemperatureService(cfg.sensor_pvs, backend, cfg.max_spread_c)
     print(f"backend: {backend.name}   domain: {cfg.domain}")
+    print(f"channel access: {_ca_summary(cfg)}")
 
     failed = 0
     while True:

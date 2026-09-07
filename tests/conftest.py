@@ -25,6 +25,23 @@ EXAMPLE_CONFIG = pathlib.Path(__file__).parent.parent / "example" / "config"
 EXAMPLE_CONFIG_FILE = EXAMPLE_CONFIG / "config.yaml"
 
 
+#: Every EPICS_CA_* variable the config can set.
+CA_VARS = tuple(config.CA_KEYS.values())
+
+
+@pytest.fixture(autouse=True)
+def _clean_ca_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep EPICS_CA_* out of the tests.
+
+    ``config.load`` writes these into ``os.environ`` - it has to, because libca
+    reads them once when it loads and never again - so without this the first
+    test to load a config leaks its settings into every test after it and the
+    ordering decides the result.
+    """
+    for name in CA_VARS:
+        monkeypatch.delenv(name, raising=False)
+
+
 @pytest.fixture(params=GIRDER_TYPES)
 def machine(request: pytest.FixtureRequest) -> G.Machine:
     """Each girder type in turn."""

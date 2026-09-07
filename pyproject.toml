@@ -15,6 +15,10 @@ classifiers = [
 description = "Tool to facilitate alignment of girders in the deb"
 dependencies = [
     "cothread",   # Channel Access. Linux only, which is fine: this runs in k8s.
+    # cothread ships no libca of its own: it looks for epicscorelibs, then for
+    # $EPICS_BASE. Without this the container has no CA library at all and
+    # every deployment silently falls back to the simulator.
+    "epicscorelibs",
     "flask",
     "numpy",
     "pyyaml",

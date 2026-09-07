@@ -24,6 +24,10 @@ One deployment serves one build bay. The bay is chosen by ``epics.domain``
 serves every bay. Encoder PVs are built from that domain; temperature sensor PVs
 are NOT, because the sensor array covers the whole hall under one domain, so
 each bay is given an explicit list of full PV names.
+
+Channel Access settings live under ``epics.ca`` and are pushed into the process
+environment by :func:`apply_ca_env`, because ``libca`` reads ``EPICS_CA_*`` once,
+when it is first loaded, and never again.
 """
 
 from __future__ import annotations
@@ -50,6 +54,61 @@ ENV_BAY = "GIRDER_BAY"
 ENV_SESSIONS_DB = "GIRDER_SESSIONS_DB"
 ENV_REPORTS = "GIRDER_REPORTS"
 ENV_MODELS = "GIRDER_MODELS"
+
+#: ``epics.ca`` keys -> the Channel Access environment variable each one sets.
+#: A key already spelled ``EPICS_...`` is passed through unchanged, so a setting
+#: with no friendly name here is still reachable from the config file.
+CA_KEYS = {
+    "server_port": "EPICS_CA_SERVER_PORT",
+    "repeater_port": "EPICS_CA_REPEATER_PORT",
+    "auto_address_list": "EPICS_CA_AUTO_ADDR_LIST",
+    "address_list": "EPICS_CA_ADDR_LIST",
+    "name_servers": "EPICS_CA_NAME_SERVERS",
+    "connection_timeout": "EPICS_CA_CONN_TMO",
+    "max_array_bytes": "EPICS_CA_MAX_ARRAY_BYTES",
+}
+
+
+def resolve_ca(ca: dict[str, Any]) -> dict[str, str]:
+    """Turn an ``epics.ca`` block into ``EPICS_CA_*`` name/value pairs.
+
+    ``EPICS_CA_REPEATER_PORT`` is derived as ``server_port + 1`` when it is not
+    given. Base does not derive it - its default is a flat 5065 whatever the
+    server port is - so moving the server port and forgetting the repeater
+    leaves the client on the repeater of a different port zone. This is what
+    DLS ``. changeports <port>`` does by hand, and doing it here means a config
+    that says 6064 needs to say nothing else.
+    """
+    out: dict[str, str] = {}
+    for key, value in ca.items():
+        if value is None or value == "":
+            continue
+        name = CA_KEYS.get(key, key if str(key).startswith("EPICS_") else "")
+        if not name:
+            raise ValueError(
+                f"unknown epics.ca key {key!r} - expected one of "
+                f"{', '.join(sorted(CA_KEYS))}, or a full EPICS_* variable name"
+            )
+        out[name] = str(value)
+    server = out.get("EPICS_CA_SERVER_PORT")
+    if server and "EPICS_CA_REPEATER_PORT" not in out:
+        out["EPICS_CA_REPEATER_PORT"] = str(int(server) + 1)
+    return out
+
+
+def apply_ca_env(ca: dict[str, str]) -> dict[str, str]:
+    """Put Channel Access settings into the environment, and report the result.
+
+    This has to run before anything imports ``cothread``: ``libca`` reads these
+    when it loads and caches them for the life of the process.
+
+    A variable already set in the environment wins. The deployment knows more
+    about the network it landed in than the ConfigMap does, so a pod can be
+    pointed at a different gateway without editing the config.
+    """
+    for name, value in ca.items():
+        os.environ.setdefault(name, value)
+    return {name: os.environ[name] for name in ca}
 
 
 def find_config(explicit: Path | None = None) -> Path:
@@ -94,6 +153,8 @@ class Config:
     """Suffix of the record processed to compute and apply the zero offset."""
     sensor_pvs: list[str]
     """Full temperature sensor PV names for this bay."""
+    ca: dict[str, str]
+    """``EPICS_CA_*`` settings in force, after the environment has had its say."""
     max_spread_c: float
     gate_default_mm: float
     encoder_resolution_mm: float
@@ -143,6 +204,9 @@ def load(path: Path | None = None, serials_path: Path | None = None) -> Config:
 
     models_raw = os.environ.get(ENV_MODELS) or paths.get("models") or ""
 
+    # Applied before the Config exists, and so before any backend imports libca.
+    ca = apply_ca_env(resolve_ca(ep.get("ca") or {}))
+
     return Config(
         domain=domain,
         encoder_device=device,
@@ -151,6 +215,7 @@ def load(path: Path | None = None, serials_path: Path | None = None) -> Config:
         zero_setpoint_suffix=ep.get("zero_setpoint_suffix", "_SP"),
         zero_process_suffix=ep.get("zero_process_suffix", "_ZCALC.PROC"),
         sensor_pvs=[str(s) for s in sensors],
+        ca=ca,
         max_spread_c=float(temp.get("max_spread_c", 0.5)),
         gate_default_mm=float(gate.get("default_mm", 0.010)),
         encoder_resolution_mm=float(gate.get("encoder_resolution_mm", 0.001)),
