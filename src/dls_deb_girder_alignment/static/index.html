@@ -1,0 +1,1134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Girder Align — V2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#0b0f14;--bg2:#0f151d;--panel:#141b25;--panel2:#182131;
+  --line:#26313f;--line2:#33414f;--txt:#e6ecf3;--muted:#8593a4;--faint:#586675;
+  --cyan:#4bc9e0;--mint:#4ecf9e;--amber:#edb34c;--red:#ef6a5f;--violet:#9d8bf0;
+  --mono:'IBM Plex Mono',ui-monospace,Menlo,monospace;
+  --sans:'Space Grotesk',ui-sans-serif,system-ui,sans-serif;
+  --shadow:0 1px 0 rgba(255,255,255,.02),0 8px 24px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box}html,body{margin:0}
+body{background:radial-gradient(1200px 600px at 80% -10%,rgba(75,201,224,.05),transparent 60%),var(--bg);
+ color:var(--txt);font-family:var(--sans);-webkit-font-smoothing:antialiased;line-height:1.4;padding:16px;min-height:100vh}
+.wrap{max-width:1240px;margin:0 auto}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.hidden{display:none !important}
+header{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:14px}
+h1{font-size:18px;font-weight:600;margin:0}
+.sub{font-size:11px;color:var(--muted);margin-top:3px}
+.tag{font-family:var(--mono);font-size:9px;padding:1px 6px;border-radius:4px;letter-spacing:.08em;margin-left:6px;vertical-align:2px}
+.tag.demo{color:var(--amber);border:1px solid rgba(237,179,76,.35);background:rgba(237,179,76,.07)}
+.tag.live{color:var(--mint);border:1px solid rgba(78,207,158,.35);background:rgba(78,207,158,.07)}
+.readout{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 10px;min-width:70px}
+.readout .k{font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+.readout .v{font-family:var(--mono);font-size:14px;font-weight:500;margin-top:2px}
+.hdr-right{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);margin-bottom:14px}
+.card-h{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--line);gap:10px;flex-wrap:wrap}
+.card-h h2{font-size:13px;font-weight:600;margin:0}
+.card-b{padding:14px}
+.chip{font-family:var(--mono);font-size:10px;padding:3px 9px;border-radius:20px;font-weight:500;white-space:nowrap}
+.chip.ok{color:var(--mint);background:rgba(78,207,158,.1);border:1px solid rgba(78,207,158,.3)}
+.chip.warn{color:var(--amber);background:rgba(237,179,76,.1);border:1px solid rgba(237,179,76,.3)}
+.chip.bad{color:var(--red);background:rgba(239,106,95,.1);border:1px solid rgba(239,106,95,.3)}
+.chip.idle{color:var(--faint);background:var(--panel2);border:1px solid var(--line)}
+label.f{display:block;font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);font-weight:600;margin-bottom:5px}
+input[type=text],input[type=number],select,textarea{width:100%;background:var(--bg2);border:1px solid var(--line2);color:var(--txt);
+ border-radius:8px;padding:9px 10px;font-family:var(--sans);font-size:13px}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--cyan)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+@media(max-width:820px){.grid2,.grid3{grid-template-columns:1fr}}
+.btn{font-family:var(--sans);font-size:13px;font-weight:600;padding:10px 16px;border-radius:9px;border:0;cursor:pointer;transition:.14s;white-space:nowrap;text-decoration:none;display:inline-block}
+.btn.primary{background:var(--cyan);color:#04222a}.btn.primary:hover{background:#63d4e8}
+.btn.good{background:var(--mint);color:#052419}.btn.good:hover{background:#65dcaf}
+.btn.ghost{background:transparent;color:var(--muted);border:1px solid var(--line2)}.btn.ghost:hover{color:var(--txt)}
+.btn.danger{background:transparent;color:var(--red);border:1px solid rgba(239,106,95,.45)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.seg{display:inline-flex;background:var(--bg2);border:1px solid var(--line);border-radius:8px;padding:3px;gap:2px}
+.seg button{font-family:var(--mono);font-size:11.5px;color:var(--muted);background:none;border:0;padding:6px 11px;border-radius:6px;cursor:pointer}
+.seg button[aria-pressed=true]{background:var(--panel2);color:var(--cyan);box-shadow:inset 0 0 0 1px var(--line2)}
+.stepper{display:flex;align-items:center;padding:10px 14px;overflow-x:auto}
+.step{display:flex;align-items:center;gap:8px;flex:none}
+.step .dot{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--line2);display:grid;place-items:center;font-family:var(--mono);font-size:11px;color:var(--faint)}
+.step .lbl{font-size:11.5px;color:var(--faint);white-space:nowrap}
+.step.done .dot{border-color:var(--mint);color:var(--mint);background:rgba(78,207,158,.08)}
+.step.done .lbl{color:var(--muted)}
+.step.active .dot{border-color:var(--cyan);color:var(--cyan);background:rgba(75,201,224,.1);box-shadow:0 0 0 4px rgba(75,201,224,.08)}
+.step.active .lbl{color:var(--txt);font-weight:500}
+.step .bar{width:20px;height:1.5px;background:var(--line);margin:0 4px}
+.step.done .bar{background:var(--mint)}
+.actives{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:820px){.actives{grid-template-columns:1fr}}
+.act{background:var(--bg2);border:1px solid var(--line2);border-radius:12px;padding:14px}
+.act.on{border-color:rgba(78,207,158,.5);box-shadow:0 0 0 1px rgba(78,207,158,.18)}
+.act.off{border-color:rgba(237,179,76,.45)}
+.act.stale{border-color:rgba(239,106,95,.6);background:rgba(239,106,95,.05)}
+.act .id{font-family:var(--mono);font-size:12px;color:var(--muted);letter-spacing:.04em}
+.act .big{font-family:var(--mono);font-size:44px;font-weight:600;line-height:1.05;margin:6px 0 2px;letter-spacing:-.02em}
+.act .row{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11.5px;color:var(--muted);padding:2px 0}
+.act .row b{color:var(--txt);font-weight:500}
+.act .dirn{font-size:12.5px;font-weight:600;margin-top:8px;padding:7px 9px;border-radius:7px;text-align:center}
+.dirn.go{background:rgba(75,201,224,.12);color:var(--cyan)}
+.dirn.done{background:rgba(78,207,158,.12);color:var(--mint)}
+.dirn.stale{background:rgba(239,106,95,.14);color:var(--red)}
+.mons{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
+@media(max-width:820px){.mons{grid-template-columns:1fr}}
+.mon{background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:10px 11px}
+.mon .t{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);font-weight:600;margin-bottom:6px}
+.mrow{display:flex;justify-content:space-between;align-items:baseline;font-family:var(--mono);font-size:11.5px;padding:3px 0;gap:8px}
+.mrow .n{color:var(--muted)}
+.mrow .v{font-weight:500}
+.mrow .d{font-size:9.5px;color:var(--faint)}
+.bar-w{height:4px;border-radius:3px;background:var(--panel2);position:relative;overflow:hidden;margin:6px 0 3px}
+.bar-w .f{position:absolute;left:0;top:0;bottom:0;border-radius:3px;transition:width .3s}
+.c-ok{color:var(--mint)}.c-warn{color:var(--amber)}.c-bad{color:var(--red)}.c-idle{color:var(--faint)}
+.bg-ok{background:var(--mint)}.bg-warn{background:var(--amber)}.bg-bad{background:var(--red)}
+.note{font-size:11px;color:var(--muted);margin-top:10px;line-height:1.5}
+.banner{padding:10px 12px;border-radius:9px;font-size:12px;margin-bottom:12px;line-height:1.5}
+.banner.bad{background:rgba(239,106,95,.1);border:1px solid rgba(239,106,95,.35);color:#ffb3ad}
+.banner.warn{background:rgba(237,179,76,.09);border:1px solid rgba(237,179,76,.32);color:#ffd98a}
+.banner.ok{background:rgba(78,207,158,.09);border:1px solid rgba(78,207,158,.3);color:#9ff0cd}
+.dof{display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid rgba(38,49,63,.5)}
+.dof:last-child{border-bottom:0}
+.dof .nm{width:96px;flex:none;font-size:12px}
+.dof .nm i{display:block;font-style:normal;font-family:var(--mono);font-size:9px;color:var(--faint)}
+.meter{flex:1;height:22px;position:relative;border-radius:5px;background:var(--bg2);border:1px solid var(--line);overflow:hidden}
+.meter .z{position:absolute;top:0;bottom:0;background:rgba(78,207,158,.09);border-left:1px dashed rgba(78,207,158,.35);border-right:1px dashed rgba(78,207,158,.35)}
+.meter .d{position:absolute;top:0;bottom:0;left:50%;width:1px;background:var(--line2)}
+.meter .m{position:absolute;top:3px;bottom:3px;width:3px;border-radius:2px;transform:translateX(-50%);transition:left .4s}
+.dof .val{width:96px;text-align:right;flex:none;font-family:var(--mono);font-size:12px}
+.dof .val i{display:block;font-style:normal;font-size:9px;color:var(--faint)}
+table.log{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px}
+table.log th{text-align:left;color:var(--faint);font-weight:500;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;padding:5px 6px;border-bottom:1px solid var(--line)}
+table.log td{padding:5px 6px;border-bottom:1px solid rgba(38,49,63,.45)}
+.modal{position:fixed;inset:0;background:rgba(4,8,12,.72);display:grid;place-items:center;z-index:50;padding:20px}
+.modal .box{background:var(--panel);border:1px solid var(--line2);border-radius:14px;max-width:520px;width:100%;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.modal h3{margin:0 0 8px;font-size:15px}
+.prog{margin-top:16px}
+.prog .track{height:14px;border-radius:7px;background:#0a0e13;border:1px solid var(--line);position:relative}
+.prog .fill{position:absolute;top:0;bottom:0;border-radius:4px;transition:width .25s,background .25s}
+.prog .tick{position:absolute;top:-5px;bottom:-5px;width:4px;background:#fff;border-radius:2px;
+  box-shadow:0 0 0 1px rgba(0,0,0,.55),0 0 7px rgba(255,255,255,.6);z-index:2}
+.prog .tickcap{position:absolute;top:-11px;font-family:var(--mono);font-size:8px;color:#fff;
+  transform:translateX(-50%);letter-spacing:.04em;text-shadow:0 0 4px #000}
+.prog .lbl{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;color:var(--faint);margin-top:3px}
+.picker{max-height:320px;overflow:auto;margin:10px 0;border:1px solid var(--line);border-radius:9px}
+.pick{display:flex;justify-content:space-between;gap:10px;padding:9px 11px;cursor:pointer;border-bottom:1px solid rgba(38,49,63,.5);font-size:12px}
+.pick:last-child{border-bottom:0}
+.pick:hover{background:var(--panel2)}
+.pick.sel{background:rgba(75,201,224,.12);box-shadow:inset 2px 0 0 var(--cyan)}
+.pick .m{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+.foot{font-size:10px;color:var(--faint);text-align:center;line-height:1.6;margin-top:14px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div>
+      <h1>Girder Align <span id="modeTag" class="tag demo">DEMO</span></h1>
+      <div class="sub" id="subline">Build-bay alignment · laser tracker → encoder targets</div>
+    </div>
+    <div class="hdr-right">
+      <div class="readout"><div class="k">Girder</div><div class="v" id="rSerial">—</div></div>
+      <div class="readout"><div class="k">Type</div><div class="v" id="rType">—</div></div>
+      <div class="readout"><div class="k">Iter</div><div class="v" id="rIter">—</div></div>
+      <div class="readout"><div class="k">Link</div><div class="v" id="rLink">—</div></div>
+      <div class="readout" id="rTempBox"><div class="k">Bay temp</div><div class="v" id="rTemp">—</div></div>
+    </div>
+  </header>
+
+  <!-- ============ SETUP ============ -->
+  <div id="viewSetup">
+    <div class="card">
+      <div class="card-h"><h2>Start alignment session</h2><span class="chip idle">No active session</span></div>
+      <div class="card-b">
+        <div class="grid2">
+          <div>
+            <label class="f">Girder serial</label>
+            <input type="text" id="fSerial" placeholder="e.g. EXAMPLE-001" autocomplete="off" list="serialList">
+            <datalist id="serialList"></datalist>
+            <div class="note" id="serialNote">Type resolves from the lookup table.</div>
+          </div>
+          <div>
+            <label class="f">Girder type</label>
+            <select id="fType"><option value="">— resolve from serial —</option></select>
+            <div class="note">Confirm this matches the girder in the bay.</div>
+          </div>
+          <div>
+            <label class="f">Operator name</label>
+            <input type="text" id="fOperator" placeholder="Your name" autocomplete="off">
+            <div class="note">Printed on the report.</div>
+          </div>
+          <div>
+            <label class="f">Bay</label>
+            <div class="v mono" id="fBay" style="padding-top:8px">—</div>
+            <div class="note" id="bayNote">Fixed by this deployment.</div>
+          </div>
+        </div>
+        <div class="grid3" style="margin-top:12px">
+          <div>
+            <label class="f">Vertical mode</label>
+            <div class="seg" id="segCombine">
+              <button data-c="0" aria-pressed="true">Flatten then heave</button>
+              <button data-c="1" aria-pressed="false">Combined</button>
+            </div>
+          </div>
+          <div>
+            <label class="f">Pairing / move first</label>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <div class="seg" id="segPairing"><button data-p="end" aria-pressed="true">End</button><button data-p="side" aria-pressed="false">Side</button></div>
+              <div class="seg" id="segFirst"><button data-f="0" aria-pressed="true">A</button><button data-f="1" aria-pressed="false">B</button></div>
+            </div>
+          </div>
+          <div>
+            <label class="f">On-target gate (mm)</label>
+            <input type="number" id="fGate" value="0.010" step="0.001" min="0.001">
+          </div>
+        </div>
+        <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn primary" id="btnStart">Start session</button>
+          <button class="btn ghost" id="btnResume">Resume previous…</button>
+        </div>
+        <div id="setupErr" class="banner bad hidden" style="margin-top:12px"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ SESSION ============ -->
+  <div id="viewSession" class="hidden">
+    <div class="card"><div class="stepper" id="stepper"></div></div>
+
+    <div class="card" id="cardSurvey">
+      <div class="card-h"><h2>Survey</h2><span class="chip idle" id="fitChip">Awaiting survey</span></div>
+      <div class="card-b">
+        <div class="grid2">
+          <div>
+            <label class="f">Upload measured points (CSV: X,Y,Z — name column optional)</label>
+            <input type="file" id="fFile" accept=".csv,.txt" style="font-size:12px">
+            <div style="margin-top:10px;display:flex;gap:10px;align-items:end">
+              <div style="flex:1"><label class="f">Air temp °C (blank = read from bay sensors)</label>
+                <input type="number" id="fTemp" step="0.1" placeholder="auto"></div>
+              <button class="btn primary" id="btnSurvey">Load survey</button>
+            </div>
+            <div class="note" id="tempNote">—</div>
+          </div>
+          <div>
+            <div class="mrow"><span class="n">Points matched</span><span class="v mono" id="sN">—</span></div>
+            <div class="mrow"><span class="n">Fit RMS</span><span class="v mono" id="sRms">—</span></div>
+            <div class="mrow"><span class="n">Max residual</span><span class="v mono" id="sMax">—</span></div>
+            <div class="mrow"><span class="n">Geometry rev</span><span class="v mono" id="sRev">—</span></div>
+            <div class="mrow"><span class="n">Survey file</span><span class="v mono" id="sFile">—</span></div>
+            <div style="margin-top:10px">
+              <button class="btn ghost hidden" id="btnUndoSurvey" style="padding:7px 12px;font-size:12px">
+                ↩ Wrong file — load a different survey</button>
+            </div>
+          </div>
+        </div>
+        <div id="surveyWarn" class="banner warn hidden" style="margin-top:12px"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><h2>Pose error vs target</h2><span class="chip idle" id="poseChip">—</span></div>
+      <div class="card-b"><div id="dofList"></div></div>
+    </div>
+
+    <div class="card" id="cardViz">
+      <div class="card-h">
+        <h2>Visualise moves</h2>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <div class="seg" id="segViz">
+            <button data-v="off" aria-pressed="true">Hidden</button>
+            <button data-v="plan" aria-pressed="false">Plan + end view</button>
+            <button data-v="3d" aria-pressed="false">3D</button>
+          </div>
+          <span class="chip idle" id="vizChip">optional</span>
+        </div>
+      </div>
+      <div class="card-b hidden" id="vizBody">
+        <div id="vizPlan">
+          <div id="planHost"></div>
+          <div style="height:1px;background:var(--line);margin:10px 0 8px"></div>
+          <div style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);font-weight:600;text-align:center;margin-bottom:2px">End view — transverse X–Y · looking downstream</div>
+          <div id="endHost" style="max-width:400px;margin:0 auto"></div>
+        </div>
+        <div id="viz3d" class="hidden">
+          <div id="host3d" style="height:420px;border:1px solid var(--line);border-radius:10px;overflow:hidden;position:relative"></div>
+          <div class="note">Drag to orbit · wheel to zoom. Girder model loads from
+            <span class="mono">static/&lt;type&gt;_bare_girder.stl</span> if present.</div>
+        </div>
+        <div class="note" id="vizNote"></div>
+      </div>
+    </div>
+
+    <div class="card hidden" id="cardMove">
+      <div class="card-h">
+        <h2 id="moveTitle">Move</h2>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <span class="chip idle" id="gateChip">—</span>
+          <span class="chip idle" id="datumChip" title="Targets are measured from the encoder readings taken when this move group opened">datum —</span>
+        </div>
+      </div>
+      <div class="card-b">
+        <div id="moveNote" class="banner warn"></div>
+        <div class="actives" id="actives"></div>
+        <div class="mons" id="monitors"></div>
+        <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <button class="btn good" id="btnDone">Confirm step complete</button>
+          <button class="btn ghost" id="btnBack">◀ Previous step</button>
+          <button class="btn ghost" id="btnAbandon">Abandon iteration &amp; re-survey</button>
+          <span style="flex:1"></span>
+          <button class="btn ghost hidden" id="btnDrive">Simulate move</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-h"><h2>Session</h2><span class="chip idle" id="sessChip">active</span></div>
+      <div class="card-b">
+        <div class="grid2">
+          <div>
+            <label class="f">Notes for the report</label>
+            <textarea id="fNotes" rows="2" placeholder="Anything the next person should know…"></textarea>
+          </div>
+          <div>
+            <label class="f">Save report to folder</label>
+            <input type="text" id="fFolder" placeholder="default reports folder">
+            <div class="note">Full path on the bay PC. Blank uses the default; a network share works if it is mounted.</div>
+          </div>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <button class="btn primary" id="btnReport">Generate report</button>
+          <button class="btn danger" id="btnStop">Stop session</button>
+          <button class="btn good hidden" id="btnNew">Start next girder ▶</button>
+          <span style="flex:1"></span>
+          <span class="chip idle" id="logChip">0 moves</span>
+          <a id="repLink" class="btn ghost hidden" target="_blank" rel="noopener">Open last report</a>
+        </div>
+        <div id="endedNote" class="banner ok hidden" style="margin-top:12px"></div>
+        <div id="repNote" class="note"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="foot">
+    Alignment maths runs server-side and is authoritative · EPICS access is read-only ·
+    zeroing sets a display datum only, never a hardware zero
+  </div>
+</div>
+
+<div class="modal hidden" id="resModal">
+  <div class="box">
+    <h3>Resume a session</h3>
+    <div class="note">Pick a session to reopen. Completed and stopped sessions open read-only so you can still generate the report.</div>
+    <div class="picker" id="resList"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn ghost" id="resCancel">Cancel</button>
+      <button class="btn primary" id="resOpen" disabled>Open session</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal hidden" id="repModal">
+  <div class="box">
+    <h3>No report generated yet</h3>
+    <div class="note" id="repBody" style="margin-bottom:12px"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap">
+      <button class="btn ghost" id="repSkip">Start next without a report</button>
+      <button class="btn primary" id="repMake">Generate report first</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal hidden" id="ovModal">
+  <div class="box">
+    <h3>Step is not within tolerance</h3>
+    <div id="ovBody" class="note" style="margin-bottom:12px"></div>
+    <label class="f">Reason for override (recorded on the report)</label>
+    <input type="text" id="ovReason" placeholder="e.g. jack at hard stop; accepted by supervisor">
+    <div style="margin-top:14px;display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn ghost" id="ovCancel">Keep adjusting</button>
+      <button class="btn danger" id="ovConfirm">Override &amp; continue</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const API={
+  async get(p){const r=await fetch(p);return r.json();},
+  async post(p,d){const r=await fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(d||{})});return r.json();},
+  async upload(p,fd){const r=await fetch(p,{method:'POST',body:fd});return r.json();}
+};
+let INFO=null,SESS=null,POLL=null;
+const OPTS={combine:0,pairing:'end',first:0};
+const fmt=(v,n=3)=>(v===null||v===undefined)?'—':(v>=0?'+':'')+Number(v).toFixed(n);
+const esc=s=>String(s??'').replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
+
+(async function boot(){
+  INFO=await API.get('/api/info');
+  $('modeTag').className='tag '+(INFO.demo?'demo':'live');
+  $('modeTag').textContent=INFO.demo?'DEMO':'LIVE';
+  $('subline').textContent=`Build-bay alignment · ${INFO.live_backend} backend · geometry ${INFO.geometry_revision}`;
+  $('rLink').textContent=INFO.demo?'sim':INFO.live_backend;
+  $('fGate').value=INFO.gate_default_mm;
+  Object.keys(INFO.types).sort().forEach(t=>{
+    const o=document.createElement('option');o.value=t;o.textContent=t;$('fType').appendChild(o);});
+  if(INFO.demo)$('btnDrive').classList.remove('hidden');
+  $('fBay').textContent=INFO.bay||INFO.domain||'—';
+  $('bayNote').textContent=`${INFO.sensor_pvs.length} temperature sensor(s) · encoders ${INFO.domain}`;
+  $('fFolder').placeholder=INFO.default_report_dir||'default reports folder';
+  try{const sl=await API.get('/api/serials');
+    (sl.serials||[]).forEach(s=>{const o=document.createElement('option');
+      o.value=s.serial;o.label=s.type;$('serialList').appendChild(o);});}catch(e){}
+  const s=await API.get('/api/session');
+  if(s.session){
+    SESS=s.session;
+    if(SESS.status==='active'){showSession();}
+    else{
+      // A finished/stopped session is still worth opening (the report may not have
+      // been generated yet) but must not trap the bay — render it read-only with
+      // "Start next girder" showing.
+      showSession();
+    }
+  }
+})();
+
+$('fSerial').addEventListener('blur',async()=>{
+  const v=$('fSerial').value.trim(); if(!v)return;
+  const r=await API.get('/api/serial/'+encodeURIComponent(v));
+  if(r.known){$('fType').value=r.type;
+    $('serialNote').innerHTML=`Resolved to <b>${esc(r.type)}</b>${r.notes?' · '+esc(r.notes):''} — confirm it matches the bay.`;}
+  else $('serialNote').textContent='Serial not in the lookup table — select the type manually and add it to girder_serials.csv.';
+});
+function seg(id,key,cast){document.querySelectorAll('#'+id+' button').forEach(b=>b.addEventListener('click',()=>{
+  OPTS[key]=cast(b.dataset[key[0]]);
+  document.querySelectorAll('#'+id+' button').forEach(x=>x.setAttribute('aria-pressed',x===b));
+  if(id==='segPairing')labelFirst();}));}
+seg('segCombine','combine',Number); seg('segPairing','pairing',String); seg('segFirst','first',Number);
+function labelFirst(){const l=OPTS.pairing==='side'?['Inboard','Outboard']:['U/S','D/S'];
+  document.querySelectorAll('#segFirst button').forEach((b,i)=>b.textContent=l[i]);}
+labelFirst();
+
+$('btnStart').addEventListener('click',async()=>{
+  $('setupErr').classList.add('hidden');
+  const r=await API.post('/api/session',{serial:$('fSerial').value.trim(),
+    operator:$('fOperator').value.trim(),type:$('fType').value,
+    gate_mm:parseFloat($('fGate').value),combine_vertical:!!OPTS.combine,
+    pairing:OPTS.pairing,first_idx:OPTS.first});
+  if(!r.ok){$('setupErr').textContent=r.error;$('setupErr').classList.remove('hidden');return;}
+  SESS=r.session; showSession();
+});
+let RESUME_PICK=null;
+$('btnResume').addEventListener('click',async()=>{
+  const r=await API.get('/api/sessions');
+  if(!r.sessions.length){alert('No saved sessions yet.');return;}
+  RESUME_PICK=null; $('resOpen').disabled=true;
+  $('resList').innerHTML=r.sessions.map(s=>
+    `<div class="pick" data-id="${s.id}">
+       <div><b>${esc(s.serial)}</b> <span class="m">${esc(s.gtype)}</span>
+         <div class="m">${esc(s.operator||'')} · ${esc((s.updated||'').replace('T',' ').slice(0,16))}</div></div>
+       <div class="m">${esc(s.status)}</div></div>`).join('');
+  $('resList').querySelectorAll('.pick').forEach(el=>el.addEventListener('click',()=>{
+    $('resList').querySelectorAll('.pick').forEach(x=>x.classList.remove('sel'));
+    el.classList.add('sel'); RESUME_PICK=el.dataset.id; $('resOpen').disabled=false;}));
+  $('resModal').classList.remove('hidden');
+});
+$('resCancel').addEventListener('click',()=>$('resModal').classList.add('hidden'));
+$('resOpen').addEventListener('click',async()=>{
+  if(!RESUME_PICK)return;
+  const rr=await API.post('/api/session/resume/'+RESUME_PICK);
+  $('resModal').classList.add('hidden');
+  if(rr.ok){SESS=rr.session;showSession();}else alert(rr.error);
+});
+function showSession(){$('viewSetup').classList.add('hidden');
+  $('viewSession').classList.remove('hidden');render();refreshTemp();
+  if(SESS && SESS.status==='active')startPoll();}
+
+$('btnSurvey').addEventListener('click',async()=>{
+  const f=$('fFile').files[0];
+  if(!f){alert('Choose a survey file first.');return;}
+  const fd=new FormData(); fd.append('file',f);
+  if($('fTemp').value)fd.append('temperature',$('fTemp').value);
+  const r=await API.upload('/api/survey',fd);
+  if(!r.ok){$('surveyWarn').textContent=r.error;$('surveyWarn').classList.remove('hidden');return;}
+  SESS=r.session; renderSurvey(r.survey); render(); drawViz();
+});
+$('btnUndoSurvey').addEventListener('click',async()=>{
+  if(!confirm('Discard the last survey and load a different file?\n\n'
+    +'Nothing has moved — this only rolls back the data. Any moves already made '
+    +'stay in the log so the record remains truthful.'))return;
+  const r=await API.post('/api/survey/undo',{});
+  if(r.ok===false){alert(r.reason||r.error);return;}
+  SESS=r.session;
+  ['sN','sRms','sMax','sFile'].forEach(id=>$(id).textContent='—');
+  $('fitChip').className='chip idle';$('fitChip').textContent='Awaiting survey';
+  $('fFile').value='';
+  render(); drawViz();
+});
+// The temperature feed is live data, so its health has to be visible: a stale or
+// dead sensor must never look like a good reading that just happens to be steady.
+async function refreshTemp(){
+  const box=$('rTempBox'), val=$('rTemp'), note=$('tempNote');
+  try{
+    const r=await API.get('/api/temperature');
+    const col={ok:'var(--mint)',degraded:'var(--amber)',down:'var(--red)'}[r.health]||'var(--faint)';
+    box.style.borderColor=col;
+    val.innerHTML = r.temperature==null
+      ? `<span style="color:var(--red)">NO DATA</span>`
+      : `<span style="color:${col}">${r.temperature.toFixed(2)}</span><small> °C</small>`;
+    const bits=[];
+    if(r.health==='down')
+      bits.push(`<span class="c-bad">■ NO TEMPERATURE DATA — ${esc(r.error||'')}. `
+                +`Enter a value manually or the survey will be recorded without one.</span>`);
+    else{
+      bits.push(`<b>${r.temperature.toFixed(2)} °C</b> `
+                +`from ${r.sensors_used}/${r.sensors_total} sensors · spread ${r.spread.toFixed(2)} °C`);
+      if(r.sensors_used<r.sensors_total)
+        bits.push(`<span class="c-warn">■ ${r.sensors_total-r.sensors_used} sensor(s) not reporting: `
+                  +`${esc((r.failed||[]).join(', '))} — average is from the rest.</span>`);
+      if(r.spread>0.5)
+        bits.push(`<span class="c-warn">■ spread ${r.spread.toFixed(2)} °C across the sensors `
+                  +`— larger than the ±0.5 °C the room is held to.</span>`);
+    }
+    if(r.demo)bits.push('<span class="c-warn">simulated sensors (demo mode)</span>');
+    note.innerHTML=bits.join('<br>');
+  }catch(e){
+    box.style.borderColor='var(--red)'; val.innerHTML='<span style="color:var(--red)">NO LINK</span>';
+    note.innerHTML='<span class="c-bad">■ Temperature service unreachable.</span>';}
+}
+function renderSurvey(s){
+  $('sN').textContent=`${s.fit.n} / ${s.n_uploaded}`;
+  $('sFile').textContent=s.filename||'—';
+  $('btnUndoSurvey').classList.remove('hidden');
+  $('sRms').textContent=s.fit.rms.toFixed(4)+' mm';
+  $('sMax').textContent=s.fit.max.toFixed(4)+' mm';
+  $('sRev').textContent=SESS.geometry_revision;
+  const c=$('fitChip');c.className='chip '+(s.fit.rms<0.05?'ok':'warn');
+  c.textContent=`Fit ${s.fit.rms.toFixed(3)} mm`;
+  const w=$('surveyWarn');
+  if(s.fit.warnings&&s.fit.warnings.length){w.textContent=s.fit.warnings.join(' · ');w.classList.remove('hidden');}
+  else w.classList.add('hidden');
+}
+
+function render(){
+  if(!SESS)return;
+  $('rSerial').textContent=SESS.serial;$('rType').textContent=SESS.gtype;
+  $('rIter').textContent=SESS.iteration||'—';
+  $('sessChip').textContent=SESS.status;
+  $('sessChip').className='chip '+(SESS.status==='complete'?'ok':(SESS.status==='stopped'?'bad':'idle'));
+
+  const steps=SESS.steps||[],done=SESS.step_index;
+  $('stepper').innerHTML=['Survey','Solve'].map((l,i)=>{
+    const st=SESS.iteration>0?'done':(i===0?'active':'');
+    return `<div class="step ${st}"><div class="dot">${st==='done'?'✓':i+1}</div><div class="lbl">${l}</div><div class="bar"></div></div>`;
+  }).join('')+steps.map((s,i)=>{
+    const cls=i<done?'done':(i===done&&SESS.phase==='moving'?'active':'');
+    return `<div class="step ${cls}"><div class="dot">${i<done?'✓':i+3}</div><div class="lbl">${esc(s.title.split('—')[0].trim())}</div>${i<steps.length-1?'<div class="bar"></div>':''}</div>`;
+  }).join('');
+
+  const a=SESS.assessment;
+  $('dofList').innerHTML=(INFO.axes||[]).map(ax=>{
+    const d=a?a.axes[ax.key]:null;
+    const tol=(SESS.tol||{})[ax.key]??ax.default_tol;
+    const span=1.6*tol,v=d?d.value:null;
+    const pos=v===null?0:Math.max(-1,Math.min(1,v/span)),left=50+pos*50;
+    const zw=(tol/span)*50,st=d?d.status:'idle';
+    return `<div class="dof"><div class="nm">${ax.label}<i>${ax.unit}</i></div>
+      <div class="meter"><div class="z" style="left:${50-zw}%;width:${zw*2}%"></div><div class="d"></div>
+      <div class="m bg-${st}" style="left:${left}%;${v===null?'opacity:.3':''}"></div></div>
+      <div class="val c-${st}">${v===null?'—':fmt(v,ax.unit==='mrad'?3:2)}
+      <i>${d?Math.round(d.frac*100)+'% of ±'+tol:'±'+tol}</i></div></div>`;}).join('');
+  if(a){const c=$('poseChip');c.className='chip '+(a.in_tolerance?'ok':'bad');
+    c.textContent=a.in_tolerance?'All axes in tolerance':`peak ${Math.round(a.peak_frac*100)}% of tol`;}
+
+  const step=SESS.step,moving=SESS.phase==='moving'&&step;
+  $('cardMove').classList.toggle('hidden',!moving);
+  if(moving){
+    $('moveTitle').textContent=`Step ${SESS.step_index+1} of ${SESS.n_steps} — ${step.title}`;
+    $('moveNote').textContent=step.note+(SESS.cross_shift_ratio?
+      ` · cross-shift ${SESS.cross_shift_ratio.toFixed(4)} mm per mm of far-pair travel`:'');
+  }
+  $('btnBack').disabled=!(SESS.step_index>0);
+  if(typeof drawViz==='function')drawViz();
+  $('logChip').textContent=`${SESS.n_moves||0} moves${SESS.n_overrides?` · ${SESS.n_overrides} override`:''}`;
+  $('logChip').className='chip '+(SESS.n_overrides?'warn':'idle');
+
+  // A session that is finished or stopped must offer a way out, or the bay is stuck.
+  const ended=SESS.status!=='active';
+  $('btnNew').classList.toggle('hidden',!ended);
+  $('btnStop').classList.toggle('hidden',ended);
+  $('cardSurvey').classList.toggle('hidden',ended);
+  const n=$('endedNote');
+  if(ended){
+    n.className='banner '+(SESS.status==='complete'?'ok':'warn');
+    n.textContent=SESS.status==='complete'
+      ? `Alignment complete for ${SESS.serial}. Generate the report if you have not already, then start the next girder.`
+      : `Session stopped for ${SESS.serial}. You can still generate a partial report, then start the next girder.`;
+    n.classList.remove('hidden');
+    if(POLL){clearInterval(POLL);POLL=null;}
+  if(TEMPPOLL){clearInterval(TEMPPOLL);TEMPPOLL=null;}
+  } else n.classList.add('hidden');
+}
+
+let TEMPPOLL=null;
+function startPoll(){
+  if(POLL)clearInterval(POLL); POLL=setInterval(tick,400); tick();
+  if(TEMPPOLL)clearInterval(TEMPPOLL); TEMPPOLL=setInterval(refreshTemp,5000);
+}
+let POLL_FAILS=0;
+async function tick(){
+  if(!SESS)return;
+  try{
+    const r=await API.get('/api/encoders');
+    if(r&&r.ok){POLL_FAILS=0; renderLive(r);}
+    else throw new Error((r&&r.error)||'bad response');
+  }catch(err){
+    // One bad poll must not kill the loop — that is how the encoder display
+    // used to vanish for the rest of the session.
+    POLL_FAILS++;
+    console.warn('encoder poll failed',POLL_FAILS,err);
+    const c=$('gateChip'); c.className='chip bad';
+    c.textContent=`no encoder data (${POLL_FAILS})`;
+    if(POLL_FAILS===3||POLL_FAILS%25===0){
+      $('actives').innerHTML='<div class="banner bad" style="grid-column:1/-1">'
+        +'■ No encoder data from the server. The alignment maths and the views still '
+        +'work, but live readback and the tolerance gate do not.<br>'
+        +'Run <span class="mono">python check_epics.py</span> — if the PVs show '
+        +'NOT CONNECTED this PC cannot reach the IOCs.</div>';
+      $('monitors').innerHTML='';
+    }
+  }
+}
+// Progress toward target as a filled bar. The start point is captured when the
+// step opens, so the bar shows how much of THIS move is done rather than an
+// absolute position that would mean nothing to the technician.
+const MOVE_START={};
+function progressBar(rel,tgt,ok,stale){
+  if(rel==null)return '<div class="prog"><div class="track"></div><div class="lbl"><span>no reading</span></div></div>';
+  const key=SESS.id+':'+SESS.step_index+':'+tgt.toFixed(6);
+  if(MOVE_START[key]===undefined)MOVE_START[key]=rel;
+  const s=MOVE_START[key], span=tgt-s;
+  let frac = Math.abs(span)<1e-9 ? 1 : (rel-s)/span;
+  const over = frac>1.02;
+  frac=Math.max(0,Math.min(1.15,frac));
+  const cls=stale?'bg-bad':(ok?'bg-ok':(over?'bg-warn':'bg-ok'));
+  const pct=Math.min(100,frac*100/1.15);
+  const tickPct=100/1.15;
+  return `<div class="prog">
+    <div class="track"><div class="fill ${cls}" style="width:${pct}%;opacity:${stale?.4:.85}"></div>
+      <div class="tick" style="left:${tickPct}%"></div>
+      <div class="tickcap" style="left:${tickPct}%">TARGET</div></div>
+    <div class="lbl"><span>from ${fmt(s,3)}</span>
+      <span>${over?'OVERSHOOT':(Math.round(frac*100)+'%')}</span>
+      <span>target ${fmt(tgt,3)}</span></div></div>`;
+}
+function renderLive(r){
+  const step=SESS.step;
+  if(!step||SESS.phase!=='moving'){$('actives').innerHTML='';$('monitors').innerHTML='';return;}
+  const chk=r.check||{},per=chk.per_encoder||{},gate=SESS.gate_mm;
+
+  $('actives').innerHTML=Object.keys(step.targets).map(eid=>{
+    const rd=r.readings[eid]||{},p=per[eid]||{};
+    const rel=rd.relative,tgt=step.targets[eid],err=(rel==null?null:rel-tgt),stale=rd.stale;
+    const ok=p.ok&&!stale;
+    const cls=stale?'stale':(ok?'on':'off');
+    let dirn,dcls;
+    if(stale){dirn='READING STALE — DO NOT ADJUST';dcls='stale';}
+    else if(ok){dirn='ON TARGET';dcls='done';}
+    else{const need=-err;
+      dirn=step.kind==='horizontal'
+        ? `${need>0?'▶ MOVE +':'◀ MOVE −'} ${Math.abs(need).toFixed(3)} mm`
+        : `${need>0?'▲ RAISE':'▼ LOWER'} ${Math.abs(need).toFixed(3)} mm`;
+      dcls='go';}
+    const fin=step.final_targets?step.final_targets[eid]:null;
+    return `<div class="act ${cls}">
+      <div class="id">${eid}</div>
+      <div class="big ${stale?'c-bad':(ok?'c-ok':'')}">${rel==null?'—':fmt(rel,3)}</div>
+      <div class="row"><span>target</span><b>${fmt(tgt,3)}</b></div>
+      <div class="row"><span>error</span><b class="${ok?'c-ok':'c-warn'}">${fmt(err,4)}</b></div>
+      <div class="row"><span>absolute</span><b>${rd.absolute==null?'—':fmt(rd.absolute,3)}</b></div>
+      ${(fin!=null&&Math.abs(fin-tgt)>1e-6)?`<div class="row"><span>settles to</span><b class="c-idle">${fmt(fin,3)}</b></div>`:''}
+      <div class="row"><span>age</span><b class="${stale?'c-bad':'c-idle'}">${rd.age==null?'—':rd.age.toFixed(1)+'s'}</b></div>
+      ${progressBar(rd.relative,tgt,ok,stale)}
+      <div class="dirn ${dcls}">${dirn}</div></div>`;}).join('');
+
+  const par=r.parasitic||{};
+  const others=(step.monitors||[]).filter(e=>INFO.vertical.includes(e));
+  const stages=(step.monitors||[]).filter(e=>INFO.horizontal.includes(e));
+  const expOf=e=>(step.expected&&step.expected[e]!=null)?step.expected[e]:null;
+  const monRow=e=>{
+    const rd=r.readings[e]||{},ex=expOf(e);
+    const dev=(rd.relative==null||ex==null)?null:rd.relative-ex;
+    const bad=dev!=null&&Math.abs(dev)>Math.max(gate*3,0.02);
+    return `<div class="mrow"><span class="n">${e}</span>
+      <span class="v ${rd.stale?'c-bad':(bad?'c-warn':'')}">${rd.relative==null?'—':fmt(rd.relative,3)}</span></div>
+      ${ex!=null?`<div class="mrow" style="padding-top:0"><span class="d">expected ${fmt(ex,3)}</span>
+      <span class="d ${bad?'c-warn':''}">${dev==null?'':'Δ '+fmt(dev,3)}</span></div>`:''}`;};
+  const pbar=(v,warn,stop,name,sub)=>{
+    const s=Math.abs(v)<=warn?'ok':(Math.abs(v)<=stop?'warn':'bad');
+    const w=Math.min(100,Math.abs(v)/(stop*1.2)*100);
+    return `<div class="mrow"><span class="n">${name}</span><span class="v c-${s}">${fmt(v,4)}</span></div>
+      <div class="bar-w"><div class="f bg-${s}" style="width:${w}%"></div></div>
+      <div class="mrow"><span class="d">${sub}</span><span class="d">warn ${warn} · stop ${stop}</span></div>`;};
+  $('monitors').innerHTML=`
+    <div class="mon"><div class="t">Other vertical encoders</div>
+      ${others.length?others.map(monRow).join(''):'<div class="mrow"><span class="d">none</span></div>'}</div>
+    <div class="mon"><div class="t">Parasitic modes</div>
+      ${pbar(par.warp||0,par.warp_warn,par.warp_stop,'WARP','vertical twist')}
+      ${pbar(par.stretch||0,par.stretch_warn,par.stretch_stop,'STRETCH','differential surge')}</div>
+    <div class="mon"><div class="t">Stage encoders${step.kind==='vertical'?' — should barely move':''}</div>
+      ${stages.length?stages.map(monRow).join(''):'<div class="mrow"><span class="d">none</span></div>'}
+      ${step.kind==='vertical'?'<div class="mrow"><span class="d">movement here means the girder is riding the spherical bearing</span></div>':''}</div>`;
+
+  const c=$('gateChip');
+  if(chk.ok){c.className='chip ok';c.textContent=`within ${gate} mm`;}
+  else{c.className='chip bad';c.textContent=(chk.reasons&&chk.reasons[0])||'not on target';}
+  const dc=$('datumChip');
+  if(r.datum_group){dc.className='chip ok';dc.textContent='datum: '+r.datum_group;}
+  else{dc.className='chip idle';dc.textContent='datum —';}
+}
+$('btnDrive').addEventListener('click',async()=>{await API.post('/api/demo/drive',{fraction:1.0});});
+$('btnDone').addEventListener('click',async()=>{
+  const r=await API.post('/api/step/complete',{});
+  if(r.ok===false){alert(r.error);return;}
+  if(!r.accepted){
+    $('ovBody').innerHTML=(r.check.reasons||[]).map(x=>'• '+esc(x)).join('<br>')
+      +'<br><br>Overrides are recorded on the report with your name and reason.';
+    $('ovModal').classList.remove('hidden');return;}
+  SESS=r.session;render();
+});
+$('ovCancel').addEventListener('click',()=>$('ovModal').classList.add('hidden'));
+$('ovConfirm').addEventListener('click',async()=>{
+  const reason=$('ovReason').value.trim();
+  if(!reason){alert('A reason is required to override.');return;}
+  const r=await API.post('/api/step/complete',{override:true,reason,operator:SESS.operator});
+  $('ovModal').classList.add('hidden');$('ovReason').value='';
+  if(r.ok!==false){SESS=r.session;render();}
+});
+$('btnBack').addEventListener('click',async()=>{
+  if(!confirm('Re-open the previous step?\n\nThe girder has already moved, so this is NOT an undo. '
+    +'Targets come from the existing plan — if the pose has drifted, abandon the iteration and re-survey instead.'))return;
+  const r=await API.post('/api/step/back',{});
+  if(r.ok){SESS=r.session;render();}
+});
+$('btnAbandon').addEventListener('click',async()=>{
+  if(!confirm('Abandon this iteration and return to survey?\n\nThe plan is discarded and fresh targets are '
+    +'computed from a new survey. This is the safe recovery if the pose has drifted.'))return;
+  const r=await API.post('/api/step/abandon',{});
+  if(r.ok){SESS=r.session;render();}
+});
+$('btnNew').addEventListener('click',async()=>{
+  // Releasing the bay without a report loses the as-left record for this girder,
+  // so make that an explicit choice rather than a silent one.
+  if(!REPORTED && (SESS.n_moves>0 || SESS.n_surveys>0)){
+    $('repBody').innerHTML=`No report has been generated for <b>${esc(SESS.serial)}</b> `
+      +`(${SESS.n_surveys||0} survey(s), ${SESS.n_moves||0} move(s)). `
+      +`The session stays saved either way, but the as-left record would not be written.`;
+    $('repModal').classList.remove('hidden'); return;}
+  await startNext();
+});
+$('repSkip').addEventListener('click',async()=>{$('repModal').classList.add('hidden');await startNext();});
+$('repMake').addEventListener('click',async()=>{
+  $('repModal').classList.add('hidden');
+  if(await makeReport())alert('Report saved. Press "Start next girder" again when ready.');
+});
+async function startNext(){
+  await API.post('/api/session/close',{});
+  SESS=null; REPORTED=false;
+  if(POLL){clearInterval(POLL);POLL=null;}
+  if(TEMPPOLL){clearInterval(TEMPPOLL);TEMPPOLL=null;}
+  backToSetup();
+}
+function backToSetup(){
+  $('viewSession').classList.add('hidden');
+  $('viewSetup').classList.remove('hidden');
+  // clear the previous girder so nothing is carried over by accident;
+  // keep the operator name, since it is usually the same person.
+  $('fSerial').value=''; $('fType').value=''; $('fFile').value=''; $('fTemp').value='';
+  $('fNotes').value='';
+  $('serialNote').textContent='Type resolves from the lookup table.';
+  ['rSerial','rType','rIter'].forEach(id=>$(id).textContent='—');
+  ['sN','sRms','sMax','sRev'].forEach(id=>$(id).textContent='—');
+  $('fitChip').className='chip idle'; $('fitChip').textContent='Awaiting survey';
+  $('poseChip').className='chip idle'; $('poseChip').textContent='—';
+  $('dofList').innerHTML=''; $('actives').innerHTML=''; $('monitors').innerHTML='';
+  $('repLink').classList.add('hidden'); $('repNote').textContent='';
+  $('endedNote').classList.add('hidden');
+  $('surveyWarn').classList.add('hidden'); $('setupErr').classList.add('hidden');
+  $('cardMove').classList.add('hidden'); $('cardSurvey').classList.remove('hidden');
+  $('fSerial').focus();
+}
+
+$('btnStop').addEventListener('click',async()=>{
+  const partial=confirm('Stop this session?\n\nOK = stop and save a PARTIAL report.\nCancel = stop without a report.');
+  const r=await API.post('/api/session/stop',{reason:'stopped by operator',report:partial});
+  SESS=r.session;render();
+  if(r.report)showReport(r.report.pdf,'Partial report saved');
+  if(POLL)clearInterval(POLL);
+});
+let REPORTED=false;
+async function makeReport(){
+  const r=await API.post('/api/report',{notes:$('fNotes').value,folder:$('fFolder').value.trim()});
+  if(!r.ok){alert(r.error);return false;}
+  REPORTED=true;
+  showReport(r.pdf,(r.partial?'Partial':'Final')+' report written to '+r.dir,r.servable);
+  return true;
+}
+$('btnReport').addEventListener('click',makeReport);
+function showReport(name,msg,servable){
+  const a=$('repLink');
+  if(servable){a.href='/reports/'+encodeURIComponent(name);a.classList.remove('hidden');}
+  else a.classList.add('hidden');
+  $('repNote').textContent=msg+' · '+name;
+}
+// ================= visualisation =================
+// Ported from the V1-2 viewer so the plan, end and 3D views look and behave
+// identically. Geometry and the solved pose come from the server; the browser
+// only draws — it never recomputes any of the alignment maths.
+let VIZ='off';
+document.querySelectorAll('#segViz button').forEach(b=>b.addEventListener('click',()=>{
+  VIZ=b.dataset.v;
+  document.querySelectorAll('#segViz button').forEach(x=>x.setAttribute('aria-pressed',x===b));
+  $('vizBody').classList.toggle('hidden',VIZ==='off');
+  $('vizPlan').classList.toggle('hidden',VIZ!=='plan');
+  $('viz3d').classList.toggle('hidden',VIZ!=='3d');
+  $('vizChip').textContent=VIZ==='off'?'optional':(VIZ==='3d'?'3D model':'plan + end');
+  drawViz();
+}));
+
+const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
+let jackX=[1,0,0],jackY=[0,1,0],jackZ=[0,0,1],p0=[0,0,0];
+let JACKS=[],VENC=[],HENC=[],FIDS=[];
+function geo(){return SESS?INFO.types[SESS.gtype]:null;}
+let FRAME_WARNED=false;
+function loadGeom(){
+  const g=geo(); if(!g)return false;
+  const jf=g.jack_frame;
+  if(!jf||!jf.x_axis||!jf.origin){
+    // Falling back to the master frame silently is what made the plan and end
+    // views wrong before: the gizmo lands 5 m upstream and the survey points
+    // stop overlapping. Fail loudly instead.
+    if(!FRAME_WARNED){FRAME_WARNED=true;
+      console.error('jack_frame missing from /api/info — views cannot be drawn correctly');}
+    $('vizNote').innerHTML='<span class="c-bad">■ Server did not send the jack frame '
+      +'for this girder, so these views cannot be drawn in the correct coordinate system. '
+      +'Update the server.</span>';
+    return false;
+  }
+  jackX=jf.x_axis; jackZ=jf.z_axis; p0=jf.origin;
+  JACKS=g.bearings||[]; VENC=g.venc||[]; HENC=g.henc||[];
+  FIDS=Object.values(g.fids||{});
+  return true;
+}
+// correction still required at a point, from the server's fitted pose error
+function corrAt(p){
+  const e=SESS&&SESS.current_err; if(!e)return null;
+  const t=[0,0,0],th=[0,0,0];
+  const a=(v,s)=>{t[0]+=v[0]*s;t[1]+=v[1]*s;t[2]+=v[2]*s;};
+  const r=(v,s)=>{th[0]+=v[0]*s;th[1]+=v[1]*s;th[2]+=v[2]*s;};
+  a(jackX,-e.sway); a(jackY,-e.heave); a(jackZ,-e.surge);
+  r(jackZ,-e.roll/1000); r(jackX,-e.pitch/1000); r(jackY,-e.yaw/1000);
+  const d=sub(p,p0);
+  return [t[0]+(th[1]*d[2]-th[2]*d[1]), t[1]+(th[2]*d[0]-th[0]*d[2]), t[2]+(th[0]*d[1]-th[1]*d[0])];
+}
+function drawViz(){
+  if(VIZ==='off'||!SESS||!loadGeom())return;
+  if(VIZ==='plan'){$('planHost').innerHTML=buildSchematic();$('endHost').innerHTML=buildEndView();}
+  else if(VIZ==='3d')ensure3D();
+  $('vizNote').innerHTML=SESS.current_err
+    ? 'Arrows are the correction still required at each survey point, exaggerated to be visible. ▲▼ labels are the vertical component in mm.'
+    : 'Load a survey to see the required moves.';
+}
+
+// ---- plan view: jack frame, girder horizontal, to scale (as V1-2) ----
+function buildSchematic(){
+  const along=p=>dot(sub(p,p0),jackZ), across=p=>dot(sub(p,p0),jackX);
+  const allP=[...JACKS.map(j=>j.p),...HENC.map(e=>e.p),...FIDS];
+  const A=allP.map(along), C=allP.map(across);
+  const aMin=Math.min(...A)-320,aMax=Math.max(...A)+320, cMin=Math.min(...C)-150,cMax=Math.max(...C)+150;
+  const Wsvg=900,padL=54,padR=54, top=46;
+  const s=(Wsvg-padL-padR)/(aMax-aMin);
+  const Hsvg=(cMax-cMin)*s+top+26;
+  const PX=p=>[padL+(along(p)-aMin)*s, top+(cMax-across(p))*s];
+  let g=`<svg viewBox="0 0 ${Wsvg} ${Hsvg}" style="width:100%;height:auto;display:block" font-family="IBM Plex Mono">`;
+  const fA=FIDS.map(along), fC=FIDS.map(across);
+  const gx0=padL+(Math.min(...fA)-150-aMin)*s, gx1=padL+(Math.max(...fA)+150-aMin)*s;
+  const gy0=top+(cMax-(Math.max(...fC)+110))*s, gy1=top+(cMax-(Math.min(...fC)-110))*s;
+  g+=`<rect x="${gx0}" y="${gy0}" width="${gx1-gx0}" height="${gy1-gy0}" rx="10" fill="rgba(75,201,224,.05)" stroke="var(--line2)"/>`;
+  g+=`<text x="${gx0+8}" y="${gy0+15}" fill="var(--faint)" font-size="9">GIRDER (${SESS.gtype})</text>`;
+  g+=`<text x="${gx0+6}" y="${gy1-7}" fill="var(--faint)" font-size="8">U/S</text><text x="${gx1-22}" y="${gy1-7}" fill="var(--faint)" font-size="8">D/S</text>`;
+  g+=`<text x="${padL-6}" y="18" fill="#9d8bf0" font-size="8.5">◄ master CSYS  (Z=0, upstream)</text>`;
+  g+=`<text x="${Wsvg-padL}" y="18" fill="#4bc9e0" font-size="8.5" text-anchor="end">beam +Z ►</text>`;
+  const [ox,oy]=PX(p0), L=46;
+  const mZa=dot([0,0,1],jackZ),mZc=dot([0,0,1],jackX), mXa=dot([1,0,0],jackZ),mXc=dot([1,0,0],jackX);
+  g+=`<g stroke-width="1.5" font-size="8">`
+   +`<line x1="${ox}" y1="${oy}" x2="${ox+L}" y2="${oy}" stroke="#4bc9e0"/><text x="${ox+L+3}" y="${oy+3}" fill="#4bc9e0">jack-Z</text>`
+   +`<line x1="${ox}" y1="${oy}" x2="${ox}" y2="${oy-L}" stroke="#edb34c"/><text x="${ox-3}" y="${oy-L-4}" fill="#edb34c" text-anchor="middle">jack-X</text>`
+   +`<line x1="${ox}" y1="${oy}" x2="${ox+L*mZa}" y2="${oy-L*mZc}" stroke="#9d8bf0" stroke-dasharray="3 2"/>`
+   +`<line x1="${ox}" y1="${oy}" x2="${ox+L*0.7*mXa}" y2="${oy-L*0.7*mXc}" stroke="#9d8bf0" stroke-dasharray="3 2"/>`
+   +`<circle cx="${ox}" cy="${oy}" r="3" fill="#e6ecf3"/>`
+   +`<text x="${ox+4}" y="${oy+16}" fill="#9d8bf0" font-size="7.5">jack CSYS · girder centre · master offset</text></g>`;
+  HENC.forEach(e=>{const[px,py]=PX(e.p);const col=e.kind==='surge'?'#4ecf9e':'#edb34c';
+    g+=`<rect x="${px-4}" y="${py-4}" width="8" height="8" fill="none" stroke="${col}" stroke-width="1.3" transform="rotate(45 ${px} ${py})"/>`
+      +`<text x="${px+8}" y="${py+3}" fill="var(--muted)" font-size="7">${e.id.replace('_','·')}</text>`;});
+  JACKS.forEach(j=>{const[px,py]=PX(j.p);
+    g+=`<circle cx="${px}" cy="${py}" r="8" fill="rgba(75,201,224,.12)" stroke="#4bc9e0" stroke-width="2"/>`
+      +`<circle cx="${px}" cy="${py}" r="2" fill="#4bc9e0"/>`
+      +`<text x="${px}" y="${py-12}" fill="var(--muted)" font-size="7" text-anchor="middle">${j.id.replace('J_','').replace('_','·')}</text>`;});
+  FIDS.forEach(f=>{const[px,py]=PX(f); const d=corrAt(f);
+    if(d){const da=dot(d,jackZ),dc=dot(d,jackX),dy=d[1];
+      const sc=32,cap=60;
+      const x2=px+Math.max(-cap,Math.min(cap,da*sc)), y2=py-Math.max(-cap,Math.min(cap,dc*sc));
+      if(Math.hypot(da,dc)>0.02){
+        g+=`<line x1="${px}" y1="${py}" x2="${x2}" y2="${y2}" stroke="#4bc9e0" stroke-width="1.8"/>`;
+        const a=Math.atan2(y2-py,x2-px);
+        g+=`<polygon points="${x2},${y2} ${x2-7*Math.cos(a-.4)},${y2-7*Math.sin(a-.4)} ${x2-7*Math.cos(a+.4)},${y2-7*Math.sin(a+.4)}" fill="#4bc9e0"/>`;}
+      g+=`<text x="${px}" y="${py-7}" fill="${dy<0?'#4ecf9e':'#edb34c'}" font-size="7.5" text-anchor="middle">${dy>=0?'▲':'▼'}${Math.abs(dy).toFixed(2)}</text>`;}
+    g+=`<circle cx="${px}" cy="${py}" r="${d?2.6:2.1}" fill="${d?'#4bc9e0':'var(--faint)'}"/>`;});
+  if(SESS.current_err)
+    g+=`<text x="${padL}" y="${Hsvg-8}" fill="var(--muted)" font-size="8">arrows = in-plane correction at each survey point · ▲▼ = vertical (Y) · move measured → nominal</text>`;
+  return g+`</svg>`;
+}
+
+// ---- end view: transverse X–Y, JACK frame, looking downstream (as V1-2) ----
+function buildEndView(){
+  const across=p=>dot(sub(p,p0),jackX), Yv=p=>p[1];
+  const pts=[...JACKS.map(j=>j.p),...VENC.map(e=>e.p),...HENC.map(e=>e.p),...FIDS];
+  const A=pts.map(across), Y=pts.map(Yv);
+  const aMin=Math.min(...A)-120,aMax=Math.max(...A)+120, yMin=Math.min(...Y)-90,yMax=Math.max(...Y)+90;
+  const Wsvg=400,padX=40,top=24,bot=30;
+  const s=(Wsvg-2*padX)/(aMax-aMin);
+  const Hsvg=(yMax-yMin)*s+top+bot;
+  const PX=p=>[padX+(across(p)-aMin)*s, top+(yMax-Yv(p))*s];
+  let g=`<svg viewBox="0 0 ${Wsvg} ${Hsvg}" style="width:100%;height:auto;display:block" font-family="IBM Plex Mono">`;
+  const fA=FIDS.map(across);
+  const bx0=padX+(Math.min(...fA)-90-aMin)*s, bx1=padX+(Math.max(...fA)+90-aMin)*s;
+  const topY=Math.max(...FIDS.map(Yv)), botY=Math.min(...VENC.map(e=>e.p[1]));
+  const by0=top+(yMax-topY)*s, by1=top+(yMax-botY)*s;
+  g+=`<rect x="${bx0}" y="${by0}" width="${bx1-bx0}" height="${by1-by0}" rx="6" fill="rgba(75,201,224,.05)" stroke="var(--line2)"/>`;
+  const sy=top+(yMax-Math.min(...HENC.map(e=>e.p[1])))*s;
+  g+=`<line x1="${padX-6}" y1="${sy}" x2="${Wsvg-padX+6}" y2="${sy}" stroke="var(--line)" stroke-dasharray="4 3"/>`
+   +`<text x="${Wsvg-padX+2}" y="${sy+3}" fill="var(--faint)" font-size="7">stages</text>`;
+  const gx=padX+6, gy=top+2, L=24;
+  g+=`<g stroke-width="1.4" font-size="7.5"><line x1="${gx}" y1="${gy+L}" x2="${gx+L}" y2="${gy+L}" stroke="#edb34c"/>`
+   +`<text x="${gx+L+2}" y="${gy+L+3}" fill="#edb34c">jack-X outboard</text>`
+   +`<line x1="${gx}" y1="${gy+L}" x2="${gx}" y2="${gy}" stroke="#7fd4c1"/><text x="${gx-2}" y="${gy}" fill="#7fd4c1">Y↑</text></g>`;
+  VENC.forEach(e=>{const[px,py]=PX(e.p);g+=`<circle cx="${px}" cy="${py}" r="1.8" fill="var(--faint)"/>`;});
+  HENC.forEach(e=>{const[px,py]=PX(e.p);const col=e.kind==='surge'?'#4ecf9e':'#edb34c';
+    g+=`<rect x="${px-3.5}" y="${py-3.5}" width="7" height="7" fill="none" stroke="${col}" stroke-width="1.2" transform="rotate(45 ${px} ${py})"/>`;});
+  // fiducials collapse onto a few transverse positions here — group them so the
+  // arrows stay readable instead of overlapping nine times
+  const groups={};
+  FIDS.forEach(f=>{const k=Math.round(across(f)/5); (groups[k]=groups[k]||[]).push(f);});
+  Object.values(groups).forEach(list=>{
+    const f=list[0]; const[px,py]=PX(f);
+    const ds=list.map(corrAt).filter(Boolean);
+    if(ds.length){
+      const d=[0,1,2].map(i=>ds.reduce((a,v)=>a+v[i],0)/ds.length);
+      const da=dot(d,jackX),dy=d[1],sc=34,cap=46;
+      const x2=px+Math.max(-cap,Math.min(cap,da*sc)), y2=py-Math.max(-cap,Math.min(cap,dy*sc));
+      if(Math.hypot(da,dy)>0.02){
+        g+=`<line x1="${px}" y1="${py}" x2="${x2}" y2="${y2}" stroke="#4bc9e0" stroke-width="1.6"/>`;
+        const a=Math.atan2(y2-py,x2-px);
+        g+=`<polygon points="${x2},${y2} ${x2-6*Math.cos(a-.4)},${y2-6*Math.sin(a-.4)} ${x2-6*Math.cos(a+.4)},${y2-6*Math.sin(a+.4)}" fill="#4bc9e0"/>`;}
+      g+=`<text x="${px}" y="${py+11}" fill="var(--faint)" font-size="7">${dy>=0?'+':''}${dy.toFixed(2)}Y</text>`;}
+    g+=`<circle cx="${px}" cy="${py}" r="2.4" fill="#4bc9e0"/>`;});
+  g+=`<text x="${Wsvg/2}" y="${Hsvg-8}" fill="var(--muted)" font-size="7.5" text-anchor="middle">roll tilts the row · heave shifts it · sway slides it</text>`;
+  return g+`</svg>`;
+}
+
+// ---- 3D (matches V1-2: master mm coordinates, OrbitControls, sliders) ----
+let LIBS=null, SC3=null;
+function loadScript(src){return new Promise((res,rej)=>{
+  const s=document.createElement('script'); s.src=src; s.onload=res; s.onerror=rej;
+  document.head.appendChild(s);});}
+async function ensure3D(){
+  if(!LIBS){
+    LIBS=(async()=>{
+      const B='https://cdn.jsdelivr.net/npm/three@0.128.0/';
+      await loadScript(B+'build/three.min.js');
+      // OBJ+MTL preferred (carries materials); STL is the fallback
+      for(const f of ['examples/js/controls/OrbitControls.js',
+                      'examples/js/loaders/MTLLoader.js',
+                      'examples/js/loaders/OBJLoader.js',
+                      'examples/js/loaders/STLLoader.js']){
+        try{await loadScript(B+f);}catch(e){}
+      }
+    })().catch(()=>{});
+  }
+  await LIBS;
+  if(!window.THREE){
+    $('host3d').innerHTML='<div style="padding:24px;color:var(--muted);font-size:12px">'
+      +'3D library could not be loaded (needs internet on first use). '
+      +'The plan and end views work offline.</div>'; return;}
+  build3D();
+}
+function build3D(){
+  const g=geo(); if(!g)return;
+  if(SC3&&SC3.type===SESS.gtype){SC3.update();return;}
+  const host=$('host3d'); host.innerHTML=
+    `<canvas id="c3d" style="width:100%;height:100%;display:block"></canvas>
+     <div style="position:absolute;left:10px;bottom:10px;display:flex;gap:8px;align-items:center;
+       background:rgba(20,27,37,.86);border:1px solid var(--line);border-radius:8px;padding:6px 9px;
+       font-family:var(--mono);font-size:10.5px;color:var(--muted);flex-wrap:wrap">
+       <label>Δ scale</label><input id="vScale" type="range" min="10" max="10000" step="50" value="150" style="width:110px">
+       <span id="vScaleL">150×</span>
+       <label style="margin-left:6px">Model</label><input id="mOpac" type="range" min="10" max="100" step="5" value="100" style="width:80px">
+       <span id="mOpacL">100%</span></div>
+     <div style="position:absolute;right:10px;top:8px;font-family:var(--mono);font-size:10px;
+       color:var(--faint);text-align:right;line-height:1.5">
+       Creo controls · middle drag = <b id="creoMode" style="color:var(--cyan)">SPIN</b><br>
+       shift+middle = pan · ctrl+middle = zoom · wheel = zoom<br>
+       <span style="color:var(--faint);opacity:.7">left button does nothing, as in Creo</span></div>`;
+  const T=THREE, canvas=$('c3d');
+  const W=host.clientWidth||900,H=host.clientHeight||420;
+  const state={vectorScale:150,panEnabled:false,modelOpacity:1.0};
+  let modelMesh=null;
+
+  const scene=new T.Scene(); scene.background=new T.Color(0x0b0f14);
+  scene.fog=new T.Fog(0x0b0f14,6000,26000);
+  const camera=new T.PerspectiveCamera(34,W/H,0.1,50000);
+  const ren=new T.WebGLRenderer({canvas,antialias:true});
+  ren.setPixelRatio(Math.min(devicePixelRatio,2)); ren.setSize(W,H);
+  if(T.sRGBEncoding!==undefined)ren.outputEncoding=T.sRGBEncoding;
+  scene.add(new T.AmbientLight(0xffffff,.55));
+  const dl=new T.DirectionalLight(0xffffff,.9); dl.position.set(4000,8000,6000); scene.add(dl);
+  const dl2=new T.DirectionalLight(0x88aaff,.35); dl2.position.set(-5000,3000,-4000); scene.add(dl2);
+
+  // everything in MASTER mm, as V1-2
+  const V=p=>new T.Vector3(p[0],p[1],p[2]);
+  const grp=new T.Group(); scene.add(grp);
+  JACKS.forEach(b=>{const c=V(b.p);
+    const j=new T.Mesh(new T.CylinderGeometry(55,75,420,20),
+      new T.MeshStandardMaterial({color:0x3a4658,metalness:.6,roughness:.5}));
+    j.position.set(c.x,c.y-210,c.z); grp.add(j);
+    const s=new T.Mesh(new T.SphereGeometry(50,20,16),
+      new T.MeshStandardMaterial({color:0x4bc9e0,emissive:0x11333c})); s.position.copy(c); grp.add(s);});
+  HENC.forEach(e=>{const m=new T.Mesh(new T.BoxGeometry(70,50,70),
+    new T.MeshStandardMaterial({color:0xedb34c,emissive:0x3a2c08})); m.position.copy(V(e.p)); grp.add(m);});
+  VENC.forEach(e=>{const m=new T.Mesh(new T.CylinderGeometry(30,30,30,14),
+    new T.MeshStandardMaterial({color:0xedb34c,emissive:0x3a2c08})); m.position.copy(V(e.p)); grp.add(m);});
+  const fidMat=new T.MeshStandardMaterial({color:0x4bc9e0,emissive:0x11333c});
+  FIDS.forEach(f=>{const m=new T.Mesh(new T.SphereGeometry(45,16,12),fidMat);m.position.copy(V(f));grp.add(m);});
+  // master + jack axis triads at the jack origin
+  const ax=new T.Group(); scene.add(ax);
+  const arrow=(d,l,c)=>new T.ArrowHelper(new T.Vector3(...d).normalize(),V(p0),l,c,l*.16,l*.09);
+  ax.add(arrow([1,0,0],1600,0xef6a5f)); ax.add(arrow([0,1,0],1600,0x4ecf9e)); ax.add(arrow([0,0,1],1600,0x4bc9e0));
+  ax.add(arrow(jackX,1300,0x9d8bf0)); ax.add(arrow(jackZ,1300,0x9d8bf0));
+
+  // model: OBJ+MTL first, STL fallback, envelope box if neither
+  const base=(g.stl||'').replace(/_bare_girder\.stl$/,'').replace(/\.stl$/,'');
+  const zr=g.z_range||[0,1];
+  const boxMat=new T.MeshStandardMaterial({color:0x8ca2b8,transparent:true,opacity:.18});
+  const envelope=new T.Mesh(new T.BoxGeometry(1000,530,zr[1]-zr[0]),boxMat);
+  envelope.position.set(p0[0],-715,(zr[0]+zr[1])/2);
+  envelope.rotation.y=Math.atan2(jackZ[0],jackZ[2]); grp.add(envelope);
+  function adopt(obj){
+    grp.remove(envelope); modelMesh=obj; grp.add(obj); applyOpacity(); ren.render(scene,camera);}
+  function tryOBJ(){
+    if(!T.OBJLoader)return trySTL();
+    const done=obj=>adopt(obj);
+    if(T.MTLLoader){
+      const ml=new T.MTLLoader();
+      ml.load(base+'_bare_girder.mtl',mats=>{
+        mats.preload();
+        const ol=new T.OBJLoader(); ol.setMaterials(mats);
+        ol.load(base+'_bare_girder.obj',done,undefined,trySTL);
+      },undefined,()=>{ // no MTL — still try the OBJ on its own
+        new T.OBJLoader().load(base+'_bare_girder.obj',done,undefined,trySTL);});
+    } else new T.OBJLoader().load(base+'_bare_girder.obj',done,undefined,trySTL);
+  }
+  function trySTL(){
+    if(!T.STLLoader)return;
+    new T.STLLoader().load('/'+g.stl,geom=>{
+      adopt(new T.Mesh(geom,new T.MeshStandardMaterial(
+        {color:0x8ca2b8,metalness:.15,roughness:.7,transparent:false,opacity:1})));
+    },undefined,()=>{});
+  }
+  function applyOpacity(){
+    if(!modelMesh)return;
+    modelMesh.traverse(o=>{if(o.material){
+      const ms=Array.isArray(o.material)?o.material:[o.material];
+      ms.forEach(mm=>{const o=state.modelOpacity;
+        mm.opacity=o; mm.transparent=(o<0.999); mm.depthWrite=(o>=0.999);
+        mm.needsUpdate=true;});}});
+  }
+  tryOBJ();
+
+  // correction vectors
+  const arrows=new T.Group(); scene.add(arrows);
+  function update(){
+    while(arrows.children.length)arrows.remove(arrows.children[0]);
+    FIDS.forEach(f=>{const d=corrAt(f); if(!d)return;
+      const v=new T.Vector3(d[0],d[1],d[2]); const L=v.length()*state.vectorScale;
+      if(L<1)return;
+      arrows.add(new T.ArrowHelper(v.clone().normalize(),V(f),L,0x4bc9e0,Math.min(200,L*.28),90));});
+    ren.render(scene,camera);
+  }
+
+  // Creo Parametric default mouse mapping, so this feels like the CAD the
+  // engineers already use:
+  //   middle drag            = spin / rotate
+  //   shift + middle drag    = pan
+  //   ctrl + middle drag     = zoom (vertical) / roll about view axis
+  //   scroll wheel           = zoom
+  let controls=null;
+  if(T.OrbitControls){
+    controls=new T.OrbitControls(camera,canvas);
+    controls.enableDamping=true; controls.dampingFactor=.08;
+    controls.enableZoom=true; controls.enableRotate=true; controls.enablePan=true;
+    // Strictly Creo: the MIDDLE button drives everything and LEFT does nothing.
+    // (Left-drag-to-rotate was the old behaviour and is deliberately NOT kept —
+    // in Creo left drag selects, it never spins the model.)
+    controls.mouseButtons={LEFT:null,MIDDLE:T.MOUSE.ROTATE,RIGHT:null};
+    controls.target.set(p0[0],-500,p0[2]);
+    // OrbitControls r128 applies its OWN modifier logic:
+    //   MOUSE.ROTATE + shift/ctrl -> pans
+    //   MOUSE.PAN    + shift/ctrl -> rotates   (i.e. it inverts)
+    // So setting PAN on shift produced a ROTATE, which is why shift+middle
+    // behaved wrongly. Leave ROTATE in place and let the built-in shift->pan do
+    // the work; only ctrl needs overriding, because DOLLY is not inverted.
+    const setMode=ev=>{
+      if(!controls)return;
+      controls.mouseButtons.MIDDLE = ev.ctrlKey ? T.MOUSE.DOLLY : T.MOUSE.ROTATE;
+      const m=$('creoMode');
+      if(m)m.textContent = ev.ctrlKey ? 'ZOOM' : (ev.shiftKey ? 'PAN' : 'SPIN');
+    };
+    canvas.addEventListener('pointerdown',setMode,true);
+    canvas.addEventListener('pointermove',setMode,true);
+    addEventListener('keydown',setMode); addEventListener('keyup',setMode);
+    canvas.addEventListener('contextmenu',e=>e.preventDefault());
+    canvas.addEventListener('auxclick',e=>e.preventDefault());
+  }
+  camera.position.set(p0[0]+4400,2500,p0[2]+4200);
+  camera.lookAt(p0[0],-500,p0[2]);
+  if(controls)controls.update();
+
+  $('vScale').addEventListener('input',e=>{state.vectorScale=+e.target.value;
+    $('vScaleL').textContent=state.vectorScale+'×'; update();});
+  $('mOpac').addEventListener('input',e=>{state.modelOpacity=(+e.target.value)/100;
+    $('mOpacL').textContent=e.target.value+'%'; applyOpacity(); ren.render(scene,camera);});
+
+  (function loop(){requestAnimationFrame(loop); if(controls)controls.update(); ren.render(scene,camera);})();
+  addEventListener('resize',()=>{const w=host.clientWidth||900,h=host.clientHeight||420;
+    camera.aspect=w/h;camera.updateProjectionMatrix();ren.setSize(w,h);});
+  SC3={type:SESS.gtype,update}; update();
+}
+
+</script>
+</body>
+</html>

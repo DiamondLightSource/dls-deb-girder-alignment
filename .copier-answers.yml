@@ -1,0 +1,19 @@
+# Changes here will be overwritten by Copier
+_commit: 5.4.0
+_src_path: https://github.com/DiamondLightSource/python-copier-template.git
+author_email: lee.hudson@diamond.ac.uk
+author_name: Lee Hudson
+component_lifecycle: production
+component_owner: ''
+component_type: application
+description: Tool to facilitate alignment of girders in the deb
+distribution_name: dls-deb-girder-alignment
+docker: true
+docs_type: README
+git_platform: github.com
+github_org: DiamondLightSource
+package_name: dls_deb_girder_alignment
+pypi: true
+repo_name: dls-deb-girder-alignment
+strict_typing: true
+type_checker: pyright

@@ -1,0 +1,10 @@
+apiVersion: backstage.io/v1alpha1
+kind: Component
+metadata:
+  name: dls-deb-girder-alignment
+  title: dls-deb-girder-alignment
+  description: Tool to facilitate alignment of girders in the deb
+spec:
+  type: application
+  lifecycle: production
+  owner: 

@@ -1,0 +1,68 @@
+# Girder alignment tool - site configuration.
+#
+# The tool NEVER writes to any PV named here. Encoder zeroing is done in the
+# IOC (X_SP / X_ZCALC.PROC, persisted by autosave), not by this application.
+#
+# One deployment serves ONE build bay. The bay is selected by `epics.domain`,
+# so the container image is identical for every bay.
+
+epics:
+  # Technical-area domain for THIS bay's encoder rig. This is the per-bay knob.
+  #   bay 1 -> TS01C, bay 2 -> TS02C, ...
+  # Override at deploy time with the GIRDER_DOMAIN environment variable.
+  domain: TS01C
+
+  # Device name within the domain. A PV is "<domain>-<encoder_device>:<suffix>".
+  encoder_device: AL-GIRDR-01
+
+  # Encoder id -> PV suffix. The eight ids are fixed by the geometry model and
+  # must all be present.
+  pv_map:
+    V_US_IN:   "US:Y_IB"
+    V_US_OUT:  "US:Y_OB"
+    V_DS_IN:   "DS:Y_IB"
+    V_DS_OUT:  "DS:Y_OB"
+    SURGE_US:  "US:Z"
+    SWAY_US:   "US:X"
+    SURGE_DS:  "DS:Z"
+    SWAY_DS:   "DS:X"
+
+  # Optional per-encoder engineering-unit scaling (counts -> mm).
+  scale: {}
+
+# ---------------------------------------------------------------------------
+# Room air temperature.
+#
+# The sensors do NOT follow the encoder domain convention - they are one array
+# covering the whole hall and all of them sit under TS01C. Each bay therefore
+# gets an explicit list of FULL PV names for the sensors nearest to it, and the
+# lists overlap between bays.
+#
+# Readings are recorded with each survey for provenance. They are not used for
+# any thermal compensation.
+# ---------------------------------------------------------------------------
+temperature:
+  sensor_pvs:
+    - "TS01C-EA-GIRDR-01:TMON01"
+    - "TS01C-EA-GIRDR-01:TMON02"
+    - "TS01C-EA-GIRDR-01:TMON03"
+
+  # Flag the average as degraded if the sensors disagree by more than this.
+  # The hall is held to +/-0.5 C.
+  max_spread_c: 0.5
+
+gate:
+  default_mm: 0.010             # per-encoder "on target" gate
+  encoder_resolution_mm: 0.001  # the gate is never allowed finer than this
+
+paths:
+  # Both are overridden by GIRDER_SESSIONS_DB / GIRDER_REPORTS at deploy time.
+  sessions_db: sessions/sessions.sqlite
+  reports: reports
+
+  # Directory holding <type>_bare_girder.obj/.mtl/.stl for the optional 3D
+  # view. The models are ~79 MB so they are NOT shipped in the package or the
+  # image; point this at a mounted volume to enable the 3D view. When it is
+  # empty or missing, the plan and end views (pure SVG) still work and the 3D
+  # view falls back to a plain envelope box.
+  models: ""
