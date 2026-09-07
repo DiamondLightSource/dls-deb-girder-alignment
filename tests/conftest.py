@@ -8,6 +8,8 @@ exactly rather than being read off a recorded file.
 
 from __future__ import annotations
 
+import pathlib
+
 import numpy as np
 import pytest
 
@@ -15,6 +17,12 @@ from dls_deb_girder_alignment import config
 from dls_deb_girder_alignment import geometry as G
 
 GIRDER_TYPES = sorted(G.GEOM)
+
+#: No site configuration ships with the package, so the tests load the template
+#: from example/config/. That keeps the template honest: if it stops being a
+#: valid configuration, the suite fails.
+EXAMPLE_CONFIG = pathlib.Path(__file__).parent.parent / "example" / "config"
+EXAMPLE_CONFIG_FILE = EXAMPLE_CONFIG / "config.yaml"
 
 
 @pytest.fixture(params=GIRDER_TYPES)
@@ -50,9 +58,15 @@ def _survey_for(m: G.Machine, err: dict[str, float]) -> list[list[float]]:
 
 
 @pytest.fixture
+def example_config() -> pathlib.Path:
+    """The deployment template in example/config/."""
+    return EXAMPLE_CONFIG_FILE
+
+
+@pytest.fixture
 def cfg(tmp_path):
     """Config pointed at a scratch directory, so tests never touch real state."""
-    c = config.load()
+    c = config.load(EXAMPLE_CONFIG_FILE)
     c.sessions_db = tmp_path / "sessions.sqlite"
     c.reports = tmp_path / "reports"
     return c

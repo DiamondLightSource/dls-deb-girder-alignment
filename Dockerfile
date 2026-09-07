@@ -39,6 +39,9 @@ COPY --from=build /app/.venv /app/.venv
 ENV PATH=/app/.venv/bin:$PATH
 
 # The web UI. One deployment per build bay; set GIRDER_DOMAIN to pick the bay.
+# No site configuration is baked in: the container reads config.yaml from
+# /epics/ioc/config, where a *-services repo mounts the service's config/
+# directory as a ConfigMap. See example/config/ in the source repository.
 EXPOSE 8080
 ENTRYPOINT ["dls-deb-girder-alignment"]
 CMD ["serve"]

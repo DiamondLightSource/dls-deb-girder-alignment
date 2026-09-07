@@ -51,10 +51,11 @@ name = "Lee Hudson"
 version_file = "src/dls_deb_girder_alignment/_version.py"
 
 [tool.setuptools.package-data]
-# The UI and the site config defaults ship with the package. The 3D girder
-# models do NOT - they are ~79 MB, so they are mounted at runtime and the
-# viewer falls back to an envelope box without them (see paths.models).
-dls_deb_girder_alignment = ["static/*.html", "data/*.yaml", "data/*.csv"]
+# Only the UI ships with the package. Site configuration does NOT - see
+# example/config/ and the module docstring in config.py. Neither do the 3D
+# girder models: they are ~79 MB, so they are mounted at runtime and the viewer
+# falls back to an envelope box without them (see paths.models).
+dls_deb_girder_alignment = ["static/*.html"]
 
 [tool.pyright]
 # "basic", not "strict": this package is mostly numerical code ported from a

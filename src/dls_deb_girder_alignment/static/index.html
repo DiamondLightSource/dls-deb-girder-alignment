@@ -278,6 +278,8 @@ table.log td{padding:5px 6px;border-bottom:1px solid rgba(38,49,63,.45)}
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <span class="chip idle" id="gateChip">—</span>
           <span class="chip idle" id="datumChip" title="Targets are measured from the encoder readings taken when this move group opened">datum —</span>
+          <button class="btn danger" id="btnZero" style="padding:6px 12px;font-size:12px"
+                  title="Writes a new zero offset into the IOC. Not undoable from here.">Zero encoders</button>
         </div>
       </div>
       <div class="card-b">
@@ -700,6 +702,25 @@ function renderLive(r){
   if(r.datum_group){dc.className='chip ok';dc.textContent='datum: '+r.datum_group;}
   else{dc.className='chip idle';dc.textContent='datum —';}
 }
+$('btnZero').addEventListener('click',async()=>{
+  const ok=confirm(
+    'Zero the encoders?\n\n'
+    +'This writes a new zero offset into the IOC for all eight encoders '
+    +'(sets each _SP to 0, then processes _ZCALC.PROC). Autosave makes it '
+    +'permanent, and everything else reading these PVs sees the change.\n\n'
+    +'It CANNOT be undone from this tool.\n\n'
+    +'Any progress on the current step is discarded: the move datum is re-taken '
+    +'from the new readings, so the step restarts from zero.\n\n'
+    +'The girder itself does not move.');
+  if(!ok)return;
+  const btn=$('btnZero'); btn.disabled=true; const was=btn.textContent;
+  btn.textContent='Zeroing…';
+  try{
+    const r=await API.post('/api/encoders/zero',{confirm:true,operator:(SESS&&SESS.operator)||''});
+    if(r.ok===false){alert('Zeroing failed:\n\n'+r.error);}
+  }catch(e){alert('Zeroing failed: '+e);}
+  finally{btn.disabled=false; btn.textContent=was; tick();}
+});
 $('btnDrive').addEventListener('click',async()=>{await API.post('/api/demo/drive',{fraction:1.0});});
 $('btnDone').addEventListener('click',async()=>{
   const r=await API.post('/api/step/complete',{});

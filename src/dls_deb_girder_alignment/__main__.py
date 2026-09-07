@@ -21,13 +21,20 @@ def _add_config_args(parser: ArgumentParser) -> None:
         "--config",
         type=Path,
         default=None,
-        help="site config YAML (default: the packaged copy)",
+        help=(
+            "site config YAML. No configuration ships with this package: "
+            f"without this, ${config.ENV_CONFIG} is used, then "
+            f"{config.DEFAULT_CONFIG_DIR / config.CONFIG_NAME}"
+        ),
     )
     parser.add_argument(
         "--serials",
         type=Path,
         default=None,
-        help="serial -> girder type CSV (default: packaged)",
+        help=(
+            f"serial -> girder type CSV (default: {config.SERIALS_NAME} beside "
+            "the config file)"
+        ),
     )
     parser.add_argument(
         "--domain", default=None, help="override epics.domain, e.g. TS02C for bay 2"
@@ -64,6 +71,7 @@ def serve(args: Namespace) -> None:
     mode = "DEMO" if service.demo else "LIVE"
     print("=" * 62)
     print(f"  Girder Alignment  -  {mode} mode  -  v{__version__}")
+    print(f"  config       : {cfg.config_path}")
     print(f"  domain       : {cfg.domain}  (device prefix {cfg.device_prefix})")
     print(f"  live backend : {service.backend.name}")
     print(f"  geometry rev : {G.GEOMETRY_REVISION}")
@@ -151,8 +159,12 @@ def main(args: Sequence[str] | None = None) -> None:
         action="store_true",
         help="simulated encoders - training and off-site use",
     )
-    p_serve.add_argument("--host", default="0.0.0.0")  # noqa: S104
-    p_serve.add_argument("--port", type=int, default=8080)
+    p_serve.add_argument(
+        "--host", default="0.0.0.0", help="interface to bind (default: all)"
+    )  # noqa: S104
+    p_serve.add_argument(
+        "--port", type=int, default=8080, help="port to serve on (default: 8080)"
+    )
     p_serve.add_argument(
         "--dev", action="store_true", help="use the Flask development server"
     )
@@ -160,7 +172,9 @@ def main(args: Sequence[str] | None = None) -> None:
 
     p_check = sub.add_parser("check", help="check Channel Access to this bay")
     _add_config_args(p_check)
-    p_check.add_argument("--demo", action="store_true")
+    p_check.add_argument(
+        "--demo", action="store_true", help="check against the simulator"
+    )
     p_check.add_argument(
         "--watch", action="store_true", help="keep polling, to watch an encoder move"
     )
@@ -177,7 +191,10 @@ def main(args: Sequence[str] | None = None) -> None:
     if not getattr(parsed, "func", None):
         parser.print_help()
         return
-    parsed.func(parsed)
+    try:
+        parsed.func(parsed)
+    except FileNotFoundError as exc:
+        parser.exit(2, f"error: {exc}\n")
 
 
 if __name__ == "__main__":

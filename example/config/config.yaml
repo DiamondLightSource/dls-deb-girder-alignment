@@ -1,7 +1,12 @@
-# Girder alignment tool - site configuration.
+# Girder alignment tool - site configuration for ONE build bay.
 #
-# The tool NEVER writes to any PV named here. Encoder zeroing is done in the
-# IOC (X_SP / X_ZCALC.PROC, persisted by autosave), not by this application.
+# This is a TEMPLATE. Copy this directory into a service in a *-services repo
+# (e.g. deb-services/services/ts01c-girder-align/config/) where it becomes a
+# ConfigMap mounted at /epics/ioc/config, which is where the application looks
+# by default. Nothing here ships with the Python package.
+#
+# The tool NEVER commands motion. Its one write is the encoder zero below,
+# which sets a measurement datum in the IOC and is persisted by autosave.
 #
 # One deployment serves ONE build bay. The bay is selected by `epics.domain`,
 # so the container image is identical for every bay.
@@ -26,6 +31,13 @@ epics:
     SWAY_US:   "US:X"
     SURGE_DS:  "DS:Z"
     SWAY_DS:   "DS:X"
+
+  # Zeroing. "Zero encoders" in the UI writes 0 to <pv><zero_setpoint_suffix>
+  # and then processes <pv><zero_process_suffix>; the IOC computes the offset
+  # and autosave persists it. This is a hardware datum, not a display offset,
+  # and it is not undoable from the tool.
+  zero_setpoint_suffix: "_SP"
+  zero_process_suffix: "_ZCALC.PROC"
 
   # Optional per-encoder engineering-unit scaling (counts -> mm).
   scale: {}
@@ -56,7 +68,14 @@ gate:
   encoder_resolution_mm: 0.001  # the gate is never allowed finer than this
 
 paths:
-  # Both are overridden by GIRDER_SESSIONS_DB / GIRDER_REPORTS at deploy time.
+  # The serial -> girder type table. Relative to THIS file, so the two travel
+  # together in one ConfigMap. Defaults to girder_serials.csv beside this file.
+  serials: girder_serials.csv
+
+  # Writable locations. The config directory is a read-only ConfigMap mount, so
+  # in a deployment set these to somewhere writable - normally by environment
+  # (GIRDER_SESSIONS_DB / GIRDER_REPORTS), which overrides whatever is here.
+  # Relative paths are resolved against the working directory, not this file.
   sessions_db: sessions/sessions.sqlite
   reports: reports
 

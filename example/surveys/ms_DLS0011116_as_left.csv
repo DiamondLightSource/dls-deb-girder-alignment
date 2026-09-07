@@ -1,0 +1,17 @@
+# MS girder DLS0011116 - example survey for the demo
+# Girder placed at: roll +0.02, pitch +0.05, heave +0.03, sway +0.04, surge +0.08, yaw +0.06
+# (mm for sway/heave/surge, mrad for roll/pitch/yaw)
+# Tracker noise 0.015 mm 1-sigma. Master frame, mm.
+#
+# The name column is ignored: points are matched to reference fiducials
+# by position, because names repeat between girder types.
+name,x,y,z
+APNT26,-403.2596,-449.8029,1365.1761
+APNT27,368.5876,-449.7624,1365.9329
+APNT28,-475.5258,-449.8553,2383.1735
+APNT29,422.2106,-449.8337,2446.8775
+APNT30,-217.7388,-449.9637,5108.2580
+APNT31,-857.7215,-450.0961,7769.6448
+APNT32,40.0591,-450.0920,7833.3463
+APNT33,-165.7511,-450.1652,8897.4531
+APNT34,-930.5111,-450.1438,8795.9621

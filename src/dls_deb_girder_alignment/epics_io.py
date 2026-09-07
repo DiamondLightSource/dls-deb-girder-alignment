@@ -1,9 +1,10 @@
 """EPICS interface - encoder and temperature readings.
 
-READ-ONLY BY DESIGN. This module never writes to an IOC. Adjustment stays
-manual and the tool observes. Encoder zeroing is an IOC operation
-(``:X_SP`` then ``:X_ZCALC.PROC``, persisted by autosave), performed once when a
-girder is installed on the jacks - not something this application does.
+THE TOOL NEVER COMMANDS MOTION. Adjustment stays manual and the tool observes.
+There is exactly one write path, :meth:`EncoderService.zero_encoders`, which sets
+a measurement datum (``:X_SP`` to zero, then process ``:X_ZCALC.PROC``) and is
+persisted IOC-side by autosave. Setting a datum is categorically different from
+moving steel; do not add any other write.
 
 Channel Access only. The service runs in the cluster alongside the IOCs, so the
 whole pyepics / CA-gateway / archiver-fallback apparatus the bay-PC version
@@ -55,6 +56,9 @@ class LiveBackend:
     def read(self, pvs: list[str]) -> dict[str, Reading]:
         raise NotImplementedError
 
+    def write(self, pv: str, value: float) -> None:
+        raise NotImplementedError
+
     def close(self) -> None:
         pass
 
@@ -65,9 +69,10 @@ class CothreadBackend(LiveBackend):
     name = "cothread"
 
     def __init__(self) -> None:
-        from cothread.catools import caget
+        from cothread.catools import caget, caput
 
         self._caget = caget
+        self._caput = caput
 
     def read(self, pvs: list[str]) -> dict[str, Reading]:
         out: dict[str, Reading] = {}
@@ -85,6 +90,10 @@ class CothreadBackend(LiveBackend):
             out[pv] = Reading(pv, float(v), float(ts), True)
         return out
 
+    def write(self, pv: str, value: float) -> None:
+        """The only write this tool performs. See the module docstring."""
+        self._caput(pv, value, timeout=2.0, throw=True)
+
 
 class DemoBackend(LiveBackend):
     """Simulator. Encoders move toward whatever target the session sets.
@@ -99,6 +108,7 @@ class DemoBackend(LiveBackend):
         self._val: dict[str, float] = {}
         self._target: dict[str, float] = {}
         self._baseline: dict[str, float] = {}
+        self.written: dict[str, float] = {}
         self._lock = threading.Lock()
         self._t0 = time.time()
 
@@ -118,6 +128,23 @@ class DemoBackend(LiveBackend):
         """Drive the simulated encoders toward these absolute values."""
         with self._lock:
             self._target.update(targets)
+
+    def write(self, pv: str, value: float) -> None:
+        """Accept and record a write. Zeroing is applied by :meth:`apply_zero`."""
+        with self._lock:
+            self.written[pv] = value
+
+    def apply_zero(self, pvs: list[str]) -> None:
+        """Make these PVs read zero, as an IOC-side zero calculation would.
+
+        The girder has not moved, so the simulated frame simply shifts: the
+        readings become zero and any target in flight is dropped, exactly as the
+        real encoders behave once a new offset is applied.
+        """
+        with self._lock:
+            for pv in pvs:
+                self._val[pv] = 0.0
+                self._target.pop(pv, None)
 
     def read(self, pvs: list[str]) -> dict[str, Reading]:
         now = time.time()
@@ -246,12 +273,52 @@ class EncoderService:
         pv_map: dict[str, str],
         backend: LiveBackend,
         scale: dict[str, float] | None = None,
+        zero_setpoint_suffix: str = "_SP",
+        zero_process_suffix: str = "_ZCALC.PROC",
     ) -> None:
         self.pv_map = dict(pv_map)
         self.backend = backend
         self.scale = scale or {}
+        self.zero_setpoint_suffix = zero_setpoint_suffix
+        self.zero_process_suffix = zero_process_suffix
         if isinstance(backend, DemoBackend):
             backend.seed(list(self.pv_map.values()))
+
+    def zero_encoders(self, encoder_ids: list[str] | None = None) -> dict[str, Any]:
+        """Zero the encoders in the IOC. THE ONLY WRITE THIS TOOL PERFORMS.
+
+        For each encoder this sets ``<pv><zero_setpoint_suffix>`` to zero and
+        then processes ``<pv><zero_process_suffix>``. The IOC computes an offset
+        and autosave persists it, so the datum survives an IOC restart and is
+        the same value everything else on the machine sees.
+
+        This is a hardware datum, not a display offset, and it is not undoable
+        from here. Callers must confirm with the operator first, and must drop
+        the session's plan datum afterwards - the absolute readings have moved,
+        so a datum captured before the zero no longer means anything.
+        """
+        ids = list(encoder_ids or self.pv_map)
+        unknown = [e for e in ids if e not in self.pv_map]
+        if unknown:
+            raise ValueError(f"unknown encoder(s): {', '.join(unknown)}")
+        pvs = [self.pv_map[e] for e in ids]
+
+        if isinstance(self.backend, DemoBackend):
+            self.backend.apply_zero(pvs)
+            return {"encoders": ids, "pvs": pvs, "demo": True, "errors": {}}
+
+        errors: dict[str, str] = {}
+        done: list[str] = []
+        for eid, pv in zip(ids, pvs, strict=True):
+            try:
+                self.backend.write(f"{pv}{self.zero_setpoint_suffix}", 0.0)
+                self.backend.write(f"{pv}{self.zero_process_suffix}", 1)
+                done.append(eid)
+            except Exception as exc:
+                # Report per encoder: a partial zero leaves the rig in a mixed
+                # state and the operator has to know which ones took.
+                errors[eid] = str(exc)
+        return {"encoders": done, "pvs": pvs, "demo": False, "errors": errors}
 
     def read_all(self, datum: dict[str, float] | None = None) -> dict[str, Any]:
         """Read every encoder.

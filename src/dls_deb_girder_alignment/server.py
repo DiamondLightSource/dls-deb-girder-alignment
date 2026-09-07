@@ -91,7 +91,13 @@ class Service:
         self.demo = demo
         backend = epics_io.make_backend(demo=demo)
         self.backend = backend
-        self.enc = epics_io.EncoderService(cfg.pv_map, backend, cfg.scale)
+        self.enc = epics_io.EncoderService(
+            cfg.pv_map,
+            backend,
+            cfg.scale,
+            zero_setpoint_suffix=cfg.zero_setpoint_suffix,
+            zero_process_suffix=cfg.zero_process_suffix,
+        )
         self.temp = epics_io.TemperatureService(
             cfg.sensor_pvs, backend, cfg.max_spread_c
         )
@@ -418,6 +424,46 @@ def create_app(service: Service) -> Flask:
             if step:
                 out["check"] = s.check_step(readings, step)
         return jsonify(out)
+
+    @app.route("/api/encoders/zero", methods=["POST"])
+    def api_zero():
+        """Zero the encoders in the IOC. The only write this tool performs.
+
+        Requires an explicit confirmation from the caller, because it is a
+        hardware datum change that cannot be undone from here and that everything
+        else looking at these PVs will see.
+        """
+        d = request.get_json(force=True) or {}
+        if not d.get("confirm"):
+            return err("zeroing the encoders requires confirm=true")
+        try:
+            with service.lock:
+                res = service.enc.zero_encoders(d.get("encoders"))
+                s = service.session
+                if s is not None:
+                    # The absolute readings have just moved, so a plan datum
+                    # captured before the zero is meaningless. Dropping it makes
+                    # the next encoder poll re-take it against the new frame.
+                    s.clear_datum()
+                    s.log(
+                        "encoder_zero",
+                        encoders=res["encoders"],
+                        errors=res["errors"],
+                        by=d.get("operator", ""),
+                    )
+                    service.store.save(s)
+            if res["errors"]:
+                return jsonify(
+                    {
+                        "ok": False,
+                        "error": "some encoders did not zero: "
+                        + "; ".join(f"{k} ({v})" for k, v in res["errors"].items()),
+                        **res,
+                    }
+                ), 502
+            return jsonify({"ok": True, **res})
+        except Exception as exc:
+            return err(exc)
 
     @app.route("/api/demo/drive", methods=["POST"])
     def api_demo_drive():
