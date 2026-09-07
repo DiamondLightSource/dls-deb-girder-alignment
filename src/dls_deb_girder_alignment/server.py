@@ -106,6 +106,16 @@ class Service:
         self.lock = threading.Lock()
         cfg.reports.mkdir(parents=True, exist_ok=True)
 
+    def close(self) -> None:
+        """Release the session store. See :meth:`SessionStore.close`."""
+        self.store.close()
+
+    def __enter__(self) -> Service:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
     def require_session(self) -> Session:
         if self.session is None:
             raise RuntimeError("no active session - start one first")

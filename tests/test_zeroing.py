@@ -110,8 +110,7 @@ def test_demo_zero_makes_the_encoders_read_zero(cfg):
 # --------------------------------------------------------------------------
 @pytest.fixture
 def client(cfg):
-    service = Service(cfg, demo=True)
-    with create_app(service).test_client() as c:
+    with Service(cfg, demo=True) as service, create_app(service).test_client() as c:
         yield c, service
 
 
@@ -161,10 +160,10 @@ def test_zero_is_recorded_in_the_audit_trail(client, survey_for):
 
 def test_zero_failure_reports_which_encoders(cfg, survey_for):
     """A failing IOC write must surface as an error, not a silent success."""
-    service = Service(cfg, demo=True)
-    service.enc.backend = RecordingBackend(fail={cfg.pv_map["SWAY_US"]})
-    with create_app(service).test_client() as c:
-        r = c.post("/api/encoders/zero", json={"confirm": True})
+    with Service(cfg, demo=True) as service:
+        service.enc.backend = RecordingBackend(fail={cfg.pv_map["SWAY_US"]})
+        with create_app(service).test_client() as c:
+            r = c.post("/api/encoders/zero", json={"confirm": True})
     assert r.status_code == 502
     body = r.get_json()
     assert body["ok"] is False

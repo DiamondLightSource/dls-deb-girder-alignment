@@ -55,6 +55,23 @@ class SessionStore:
             )""")
         self._db.commit()
 
+    def close(self) -> None:
+        """Release the SQLite connection.
+
+        The service holds one store for the life of the process, so this is
+        rarely called in anger. It matters anywhere a store is short-lived -
+        the tests, and `sessions` on the command line - because from Python
+        3.13 an unclosed connection raises ResourceWarning when it is
+        collected, and the suite runs with warnings as errors.
+        """
+        self._db.close()
+
+    def __enter__(self) -> SessionStore:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
     def save(self, s: Session):
         d = s.to_dict()
         self._db.execute(

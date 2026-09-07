@@ -20,11 +20,11 @@ class Harness(NamedTuple):
 
 @pytest.fixture
 def client(cfg):
-    service = Service(cfg, demo=True)
-    app = create_app(service)
-    app.config.update(TESTING=True)
-    with app.test_client() as c:
-        yield Harness(c, service)
+    with Service(cfg, demo=True) as service:
+        app = create_app(service)
+        app.config.update(TESTING=True)
+        with app.test_client() as c:
+            yield Harness(c, service)
 
 
 def _json(resp):
@@ -230,8 +230,7 @@ def test_session_survives_a_restart(client, cfg, survey_for):
     datum = dict(client.service.session.datum)
     assert datum
 
-    fresh = Service(cfg, demo=True)
-    with create_app(fresh).test_client() as c2:
+    with Service(cfg, demo=True) as fresh, create_app(fresh).test_client() as c2:
         assert _json(c2.get("/api/session"))["session"] is None
         resumed = _json(c2.post(f"/api/session/resume/{sid}"))
         assert resumed["session"]["id"] == sid

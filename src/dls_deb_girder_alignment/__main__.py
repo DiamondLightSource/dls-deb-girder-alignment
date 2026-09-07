@@ -149,17 +149,17 @@ def sessions(args: Namespace) -> None:
     from .session import SessionStore
 
     cfg = _load(args)
-    store = SessionStore(cfg.sessions_db)
-    if args.action == "list":
-        for row in store.list(limit=args.limit):
-            print(
-                f"{row['id']}  {row['created'][:19]}  {row['serial']:<12} "
-                f"{row['gtype']:<3} {row['status']:<9} {row['operator']}"
-            )
-    elif args.action == "export":
-        out = {r["id"]: store.load(r["id"]) for r in store.list(limit=10_000)}
-        args.out.write_text(json.dumps(out, indent=2))
-        print(f"exported {len(out)} sessions to {args.out}")
+    with SessionStore(cfg.sessions_db) as store:
+        if args.action == "list":
+            for row in store.list(limit=args.limit):
+                print(
+                    f"{row['id']}  {row['created'][:19]}  {row['serial']:<12} "
+                    f"{row['gtype']:<3} {row['status']:<9} {row['operator']}"
+                )
+        elif args.action == "export":
+            out = {r["id"]: store.load(r["id"]) for r in store.list(limit=10_000)}
+            args.out.write_text(json.dumps(out, indent=2))
+            print(f"exported {len(out)} sessions to {args.out}")
 
 
 def main(args: Sequence[str] | None = None) -> None:

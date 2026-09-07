@@ -154,15 +154,15 @@ def test_converged_survey_completes_the_session(session: Session, survey_for):
 def test_persistence_round_trip(session: Session, tmp_path):
     """A pod restart mid-move must resume against the same datum."""
     session.capture_datum(dict.fromkeys(G.ENCODER_IDS, 0.25), "flatten")
-    store = SessionStore(tmp_path / "s.sqlite")
-    store.save(session)
+    with SessionStore(tmp_path / "s.sqlite") as store:
+        store.save(session)
 
-    blob = store.load(session.id)
-    assert blob is not None
-    restored = Session.from_dict(blob)
-    assert restored.datum == session.datum
-    assert restored.datum_group == "flatten"
-    assert restored.step_index == session.step_index
-    assert restored.current_err == session.current_err
-    assert [m["step"] for m in restored.moves] == [m["step"] for m in session.moves]
-    assert store.list()[0]["serial"] == "DLS0011116"
+        blob = store.load(session.id)
+        assert blob is not None
+        restored = Session.from_dict(blob)
+        assert restored.datum == session.datum
+        assert restored.datum_group == "flatten"
+        assert restored.step_index == session.step_index
+        assert restored.current_err == session.current_err
+        assert [m["step"] for m in restored.moves] == [m["step"] for m in session.moves]
+        assert store.list()[0]["serial"] == "DLS0011116"
