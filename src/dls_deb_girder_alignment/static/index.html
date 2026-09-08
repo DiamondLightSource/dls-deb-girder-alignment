@@ -143,7 +143,7 @@ table.log td{padding:5px 6px;border-bottom:1px solid rgba(38,49,63,.45)}
       <div class="readout"><div class="k">Girder</div><div class="v" id="rSerial">—</div></div>
       <div class="readout"><div class="k">Type</div><div class="v" id="rType">—</div></div>
       <div class="readout"><div class="k">Iter</div><div class="v" id="rIter">—</div></div>
-      <div class="readout"><div class="k">Link</div><div class="v" id="rLink">—</div></div>
+      <div class="readout" id="rLinkBox"><div class="k">CA link</div><div class="v" id="rLink">—</div></div>
       <div class="readout" id="rTempBox"><div class="k">Bay temp</div><div class="v" id="rTemp">—</div></div>
     </div>
   </header>
@@ -201,6 +201,25 @@ table.log td{padding:5px 6px;border-bottom:1px solid rgba(38,49,63,.45)}
           <button class="btn ghost" id="btnResume">Resume previous…</button>
         </div>
         <div id="setupErr" class="banner bad hidden" style="margin-top:12px"></div>
+      </div>
+    </div>
+
+    <!-- ============ CHANNEL ACCESS ============ -->
+    <div class="card" id="cardCa">
+      <div class="card-h">
+        <h2>Channel Access</h2>
+        <span class="chip idle" id="caChip">checking…</span>
+      </div>
+      <div class="card-b">
+        <div id="caWarn" class="banner warn hidden"></div>
+        <table class="log">
+          <thead><tr>
+            <th style="width:110px">Signal</th><th>PV</th>
+            <th style="text-align:right;width:110px">Reading</th><th style="width:150px">Status</th>
+          </tr></thead>
+          <tbody id="caRows"></tbody>
+        </table>
+        <div class="note" id="caNote"></div>
       </div>
     </div>
   </div>
@@ -379,7 +398,120 @@ const OPTS={combine:0,pairing:'end',first:0};
 const fmt=(v,n=3)=>(v===null||v===undefined)?'—':(v>=0?'+':'')+Number(v).toFixed(n);
 const esc=s=>String(s??'').replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
 
+// ---------------------------------------------------------------------------
+// Channel Access status.
+//
+// Without this the setup page cannot tell a healthy link from a dead one: the
+// header used to show the backend's NAME ("cothread"), which reads the same
+// whether or not a single PV has ever connected, and nothing polled the
+// encoders until a session was already under way. A whole alignment could be
+// set up against an IOC that was never there.
+//
+// Three states, because connected-but-not-updating is a different fault from
+// not connected at all, and they need different actions: a stale encoder is
+// usually the PLC link, a disconnected one is usually the network or the port.
+// ---------------------------------------------------------------------------
+let CAPOLL=null;
+
+function caState(readings){
+  const ids=Object.keys(readings||{});
+  if(!ids.length)return{cls:'idle',up:0,total:0,down:[],stale:[]};
+  const down=ids.filter(k=>readings[k].absolute===null||readings[k].absolute===undefined);
+  const stale=ids.filter(k=>down.indexOf(k)<0&&readings[k].stale);
+  return{cls:down.length?'bad':(stale.length?'warn':'ok'),
+         up:ids.length-down.length,total:ids.length,down,stale};
+}
+
+function paintCa(st,readings,temp){
+  // Header: visible on every screen, so a link that drops mid-alignment shows
+  // up without going back to setup.
+  const v=$('rLink');
+  v.className='v '+({ok:'c-ok',warn:'c-warn',bad:'c-bad',idle:'c-idle'}[st.cls]);
+  v.textContent=(INFO&&INFO.demo)?'sim':(st.total?`${st.up}/${st.total}`:'—');
+
+  const chip=$('caChip');
+  if(!chip)return;
+  if(INFO&&INFO.demo){
+    chip.className='chip idle';
+    chip.textContent='simulated — no IOC';
+  }else{
+    chip.className='chip '+(st.cls==='idle'?'idle':st.cls);
+    chip.textContent=st.cls==='idle'?'no data'
+      :`${st.up}/${st.total} encoders`+(st.stale.length?` · ${st.stale.length} stale`:'');
+  }
+
+  // Warn, never block: if the link is down the operator needs this page to
+  // explain why, and disabling the form takes the diagnosis away with it.
+  const w=$('caWarn');
+  if(st.cls==='bad'){
+    w.className='banner bad';
+    w.innerHTML='■ <b>'+st.down.length+' of '+st.total+' encoders are not connected.</b> '
+      +'You can still start a session, but there is no live readback and the '
+      +'on-target gate cannot pass. Check the PV names and the Channel Access '
+      +'settings below against the IOC.';
+  }else if(st.cls==='warn'){
+    w.className='banner warn';
+    w.innerHTML='■ <b>'+st.stale.length+' encoder(s) connected but not updating.</b> '
+      +'The IOC is reachable, so this is usually the link from the IOC to the PLC '
+      +'rather than the network.';
+  }else w.className='banner warn hidden';
+
+  // Detail: the same eight rows `dls-deb-girder-alignment check` prints, so a
+  // fault can be read off the screen instead of out of kubectl.
+  const rows=[];
+  Object.keys(readings||{}).forEach(k=>{
+    const r=readings[k]||{};
+    const bad=r.absolute===null||r.absolute===undefined;
+    const cls=bad?'c-bad':(r.stale?'c-warn':'c-ok');
+    const status=bad?('not connected'+(r.error?' — '+esc(r.error):'')):(r.stale?'stale':'ok');
+    rows.push(`<tr><td>${esc(k)}</td><td class="c-idle">${esc(r.pv||'')}</td>`
+      +`<td style="text-align:right" class="${cls}">${bad?'—':fmt(r.absolute)}</td>`
+      +`<td class="${cls}">${status}</td></tr>`);
+  });
+  // Temperature is reported but deliberately not counted above: it is recorded
+  // with the survey for provenance and drives nothing, so a dead thermometer
+  // must not make the alignment link look broken.
+  if(temp&&temp.sensors){
+    Object.keys(temp.sensors).forEach(pv=>{
+      const d=temp.sensors[pv]||{};
+      const bad=d.value===null||d.value===undefined;
+      const cls=bad?'c-bad':(d.stale?'c-warn':'c-ok');
+      rows.push(`<tr><td class="c-idle">temp</td><td class="c-idle">${esc(pv)}</td>`
+        +`<td style="text-align:right" class="${cls}">${bad?'—':Number(d.value).toFixed(2)+' °C'}</td>`
+        +`<td class="${cls}">${bad?('not connected'+(d.error?' — '+esc(d.error):'')):(d.stale?'stale':'ok')}</td></tr>`);
+    });
+  }
+  $('caRows').innerHTML=rows.join('')||'<tr><td colspan="4" class="c-idle">no data</td></tr>';
+  $('caNote').textContent=INFO
+    ? `Encoders ${INFO.domain} · temperature sensors are recorded with the survey `
+      +'and are not part of the count above.'
+    : '';
+}
+
+async function caCheck(){
+  try{
+    const [e,t]=await Promise.all([
+      API.get('/api/encoders'),
+      API.get('/api/temperature').catch(()=>null)
+    ]);
+    paintCa(caState(e&&e.readings),(e&&e.readings)||{},t);
+  }catch(err){
+    console.warn('CA status poll failed',err);
+    paintCa({cls:'idle',up:0,total:0,down:[],stale:[]},{},null);
+  }
+}
+
+function startCaPoll(){
+  if(CAPOLL)clearInterval(CAPOLL);
+  // 5s: this is a health indicator, not the live readback the session view
+  // polls at 400ms. Left running during a session so the header stays honest
+  // if the link drops part way through.
+  CAPOLL=setInterval(caCheck,5000);
+  caCheck();
+}
+
 (async function boot(){
+ try{
   INFO=await API.get('/api/info');
   $('modeTag').className='tag '+(INFO.demo?'demo':'live');
   $('modeTag').textContent=INFO.demo?'DEMO':'LIVE';
@@ -406,6 +538,22 @@ const esc=s=>String(s??'').replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp
       showSession();
     }
   }
+  startCaPoll();
+ }catch(err){
+  // Everything above was one unguarded await chain: any failure - most often
+  // /api/info not answering - aborted boot silently and left the static shell
+  // on screen with no explanation, which is indistinguishable from the server
+  // being unreachable. Say so instead.
+  console.error('boot failed',err);
+  const b=document.createElement('div');
+  b.className='banner bad';
+  b.innerHTML='■ <b>This page did not finish loading.</b> The server answered '
+    +'badly or not at all, so nothing here is live. Reload once; if it persists, '
+    +'check the service is running and look at its log.<br><span class="mono">'
+    +esc(String((err&&err.message)||err))+'</span>';
+  const w=document.querySelector('.wrap');
+  if(w)w.insertBefore(b,w.firstChild);
+ }
 })();
 
 $('fSerial').addEventListener('blur',async()=>{
@@ -608,8 +756,8 @@ async function tick(){
       $('actives').innerHTML='<div class="banner bad" style="grid-column:1/-1">'
         +'■ No encoder data from the server. The alignment maths and the views still '
         +'work, but live readback and the tolerance gate do not.<br>'
-        +'Run <span class="mono">python check_epics.py</span> — if the PVs show '
-        +'NOT CONNECTED this PC cannot reach the IOCs.</div>';
+        +'Run <span class="mono">dls-deb-girder-alignment check</span> — if the PVs '
+        +'show NOT CONNECTED the service cannot reach the IOCs.</div>';
       $('monitors').innerHTML='';
     }
   }

@@ -10,7 +10,6 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
-    "Programming Language :: Python :: 3.14",
 ]
 description = "Tool to facilitate alignment of girders in the deb"
 dependencies = [
@@ -28,7 +27,12 @@ dependencies = [
 dynamic = ["version"]
 license.file = "LICENSE"
 readme = "README.md"
-requires-python = ">=3.11"
+# Upper bound is cothread: 2.20.1 is its latest release, it classifies no
+# further than 3.12, and on 3.14 `import cothread` is a fatal stack overflow in
+# its coroutine bootstrap - not an exception, an interpreter crash. It does work
+# on 3.13. The container builds on 3.11 (.python-version), so this bound costs
+# the deployment nothing; lift it when cothread supports 3.14.
+requires-python = ">=3.11,<3.14"
 
 [dependency-groups]
 dev = [

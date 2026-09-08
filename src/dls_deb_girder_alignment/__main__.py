@@ -6,6 +6,7 @@ import json
 import logging
 import os
 import sys
+import threading
 import time
 from argparse import ArgumentParser, Namespace
 from collections.abc import Sequence
@@ -101,12 +102,27 @@ def serve(args: Namespace) -> None:
     print("=" * 62, flush=True)
 
     logging.getLogger("werkzeug").setLevel(logging.WARNING)
-    if args.dev:
-        app.run(host=args.host, port=args.port, threaded=True)
-    else:
-        from waitress import serve as waitress_serve
 
-        waitress_serve(app, host=args.host, port=args.port, threads=8)
+    def run_server() -> None:
+        if args.dev:
+            app.run(host=args.host, port=args.port, threaded=True)
+        else:
+            from waitress import serve as waitress_serve
+
+            waitress_serve(app, host=args.host, port=args.port, threads=8)
+
+    if isinstance(service.backend, epics_io.CothreadBackend):
+        # cothread's scheduler is cooperative and must own the main thread.
+        # Every CA call from a WSGI worker is marshalled back onto it, so if
+        # the main thread is sitting inside the server instead, those callbacks
+        # are never serviced and every encoder read blocks until it times out.
+        # Serve from a daemon thread and give the main thread to cothread.
+        import cothread
+
+        threading.Thread(target=run_server, daemon=True).start()
+        cothread.WaitForQuit()
+    else:
+        run_server()
 
 
 def check(args: Namespace) -> None:

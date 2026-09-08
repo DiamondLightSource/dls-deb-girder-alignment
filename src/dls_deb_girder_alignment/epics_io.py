@@ -69,17 +69,41 @@ class CothreadBackend(LiveBackend):
     name = "cothread"
 
     def __init__(self) -> None:
+        import cothread
         from cothread.catools import caget, caput
+
+        self._cothread = cothread
+        # cothread's scheduler is cooperative and belongs to whichever thread
+        # started it - this one, the main thread at start-up. A CA call from
+        # any other thread asserts outright, and every request the WSGI server
+        # handles arrives on a worker thread, so they have to be marshalled
+        # back. See :meth:`_call`.
+        self._owner = threading.get_ident()
 
         self._caget = caget
         self._caput = caput
+
+    def _call(self, fn: Any, *args: Any, **kwargs: Any) -> Any:
+        """Run a cothread call on the thread that owns the scheduler.
+
+        ``CallbackResult`` hands the work to that thread and waits for it,
+        re-raising anything it raised. It is only needed off-thread: used on
+        the scheduler's own thread it would wait for a callback that only it
+        can service, which never arrives.
+        """
+        if threading.get_ident() == self._owner:
+            return fn(*args, **kwargs)
+        return self._cothread.CallbackResult(fn, *args, **kwargs)
 
     def read(self, pvs: list[str]) -> dict[str, Reading]:
         out: dict[str, Reading] = {}
         try:
             # cothread is untyped, so annotate what caget actually returns: one
             # augmented value per PV, in the order asked for.
-            vals = cast(list[Any], self._caget(pvs, timeout=1.0, throw=False, format=1))
+            vals = cast(
+                list[Any],
+                self._call(self._caget, pvs, timeout=1.0, throw=False, format=1),
+            )
         except Exception as exc:  # pragma: no cover - needs a broken CA stack
             return {p: Reading(p, None, None, False, str(exc)) for p in pvs}
         for pv, v in zip(pvs, vals, strict=True):
@@ -92,7 +116,7 @@ class CothreadBackend(LiveBackend):
 
     def write(self, pv: str, value: float) -> None:
         """The only write this tool performs. See the module docstring."""
-        self._caput(pv, value, timeout=2.0, throw=True)
+        self._call(self._caput, pv, value, timeout=2.0, throw=True)
 
 
 class DemoBackend(LiveBackend):

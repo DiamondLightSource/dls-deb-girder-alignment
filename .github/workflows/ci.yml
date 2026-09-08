@@ -19,7 +19,9 @@ jobs:
     strategy:
       matrix:
         runs-on: ["ubuntu-latest"] # can add windows-latest, macos-latest
-        python-version: ["3.11", "3.12", "3.13", "3.14"]
+        # No 3.14: cothread cannot be imported there at all, see
+        # requires-python in pyproject.toml.
+        python-version: ["3.11", "3.12", "3.13"]
       fail-fast: false
     uses: ./.github/workflows/_test.yml
     with:
