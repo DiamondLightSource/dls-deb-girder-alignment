@@ -89,6 +89,22 @@ class SessionStore:
         )
         self._db.commit()
 
+    def export(self, limit: int = 10_000) -> dict[str, dict]:
+        """Every session, whole, keyed by id.
+
+        The report written beside each PDF already contains its own session, so
+        this is only the safety net for sessions that never produced one -
+        abandoned partway, or open when the volume is lost. Reading the rows
+        through SQLite gives a consistent snapshot, which copying the database
+        file out from under a running service does not.
+        """
+        out = {}
+        for row in self.list(limit=limit):
+            d = self.load(row["id"])
+            if d is not None:
+                out[row["id"]] = d
+        return out
+
     def load(self, sid: str) -> dict | None:
         r = self._db.execute("SELECT blob FROM sessions WHERE id=?", (sid,)).fetchone()
         return json.loads(r[0]) if r else None

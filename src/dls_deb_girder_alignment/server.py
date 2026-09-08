@@ -341,6 +341,30 @@ def create_app(service: Service) -> Flask:
     def api_sessions():
         return jsonify({"ok": True, "sessions": service.store.list()})
 
+    @app.route("/api/sessions/export")
+    def api_sessions_export():
+        """Every session in full, for backup.
+
+        The deployment's PersistentVolumeClaim is working storage and is not
+        backed up. Reports are pulled off it over HTTP (see
+        scripts/mirror_reports.py) and each one carries its own session, so
+        this endpoint covers what those miss: sessions that never produced a
+        report. Pulling JSON rather than copying sessions.sqlite avoids taking
+        a torn copy of a database that is being written to.
+
+        ``sessions`` holds exactly what ``sessions export`` writes on the
+        command line.
+        """
+        sessions = service.store.export()
+        return jsonify(
+            {
+                "ok": True,
+                "generated": datetime.now(UTC).isoformat(timespec="seconds"),
+                "count": len(sessions),
+                "sessions": sessions,
+            }
+        )
+
     @app.route("/api/session/resume/<sid>", methods=["POST"])
     def api_resume(sid: str):
         d = service.store.load(sid)

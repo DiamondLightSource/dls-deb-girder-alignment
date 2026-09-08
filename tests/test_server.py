@@ -272,6 +272,60 @@ def test_close_frees_the_bay(client, survey_for):
     )
 
 
+# ---------------------------------------------------------------------------
+# Backup.
+#
+# The deployment writes to a PersistentVolumeClaim, which is working storage and
+# is not backed up. Reports are pulled off it over HTTP and each carries its own
+# session; this endpoint is what covers the sessions that never produced one.
+# ---------------------------------------------------------------------------
+
+
+def test_export_returns_whole_sessions_not_summaries(client, survey_for):
+    """A summary would not restore anything. The export has to be the session."""
+    _json(
+        client.client.post(
+            "/api/session", json={"serial": "DLS0011116", "operator": "tester"}
+        )
+    )
+    _json(
+        client.client.post(
+            "/api/survey", json={"points": survey_for(G.machine("MS"), {"heave": 0.5})}
+        )
+    )
+    _json(client.client.post("/api/session/close"))
+
+    out = _json(client.client.get("/api/sessions/export"))
+    assert out["count"] == 1
+    sid = _json(client.client.get("/api/sessions"))["sessions"][0]["id"]
+    session = out["sessions"][sid]
+    # The whole thing, round-trippable - not the seven columns /api/sessions has.
+    assert session["serial"] == "DLS0011116"
+    assert session["plan"]
+    assert session["events"]
+    assert session["surveys"]
+
+
+def test_export_matches_what_the_cli_writes(client, survey_for):
+    """One implementation, so a backup cannot drift from `sessions export`."""
+    _json(
+        client.client.post(
+            "/api/session", json={"serial": "DLS0011116", "operator": "tester"}
+        )
+    )
+    _json(client.client.post("/api/session/close"))
+    assert _json(client.client.get("/api/sessions/export"))["sessions"] == (
+        client.service.store.export()
+    )
+
+
+def test_export_of_an_empty_store_is_not_an_error(client):
+    """A fresh deployment must not make the backup job fail every night."""
+    out = _json(client.client.get("/api/sessions/export"))
+    assert out["count"] == 0
+    assert out["sessions"] == {}
+
+
 @pytest.mark.parametrize(
     "text,expected",
     [

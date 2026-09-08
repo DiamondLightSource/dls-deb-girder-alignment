@@ -173,7 +173,7 @@ def sessions(args: Namespace) -> None:
                     f"{row['gtype']:<3} {row['status']:<9} {row['operator']}"
                 )
         elif args.action == "export":
-            out = {r["id"]: store.load(r["id"]) for r in store.list(limit=10_000)}
+            out = store.export()
             args.out.write_text(json.dumps(out, indent=2))
             print(f"exported {len(out)} sessions to {args.out}")
 

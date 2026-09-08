@@ -80,6 +80,29 @@ Common options: `--config`, `--serials`, `--domain`, `--demo`.
 `serve` adds `--host`, `--port` and `--dev` (Flask's development server instead
 of waitress). `--help` on any of them for the details.
 
+`scripts/mirror_reports.py` is not part of the package — it is a standalone,
+stdlib-only script that copies reports off a running deployment onto backed-up
+storage, over the same HTTP endpoints the web UI uses. Run it from cron on any
+machine that can reach the service and has the share mounted:
+
+```bash
+scripts/mirror_reports.py --url https://deb-girder-bay-01.diamond.ac.uk \
+                          --dest /dls/sdrive/<group>/girder-alignment/bay1 --sessions
+```
+
+It only ever adds files, so running it repeatedly is harmless. **Reports on the
+deployment's PersistentVolumeClaim are not backed up**; see the header of the
+script for why the mirror is pulled from outside rather than written from the
+pod.
+
+`--sessions` additionally saves the whole session store as
+`sessions_<YYYYmmdd>.json`, fetched from `/api/sessions/export`. Every report
+already carries its own session in the `.json` beside the PDF — the same
+content the database holds — so this covers only the sessions that never
+produced a report: abandoned partway, or open when the volume is lost. It is
+pulled as JSON rather than by copying `sessions.sqlite`, because a file copy
+taken while the service is writing can be torn.
+
 ---
 
 ## Configuration
