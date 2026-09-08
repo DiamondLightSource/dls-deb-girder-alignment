@@ -72,7 +72,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--cyan)}
 .act{background:var(--bg2);border:1px solid var(--line2);border-radius:12px;padding:14px}
 .act.on{border-color:rgba(78,207,158,.5);box-shadow:0 0 0 1px rgba(78,207,158,.18)}
 .act.off{border-color:rgba(237,179,76,.45)}
-.act.stale{border-color:rgba(239,106,95,.6);background:rgba(239,106,95,.05)}
+.act.down{border-color:rgba(239,106,95,.6);background:rgba(239,106,95,.05)}
 .act .id{font-family:var(--mono);font-size:12px;color:var(--muted);letter-spacing:.04em}
 .act .big{font-family:var(--mono);font-size:44px;font-weight:600;line-height:1.05;margin:6px 0 2px;letter-spacing:-.02em}
 .act .row{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11.5px;color:var(--muted);padding:2px 0}
@@ -80,7 +80,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--cyan)}
 .act .dirn{font-size:12.5px;font-weight:600;margin-top:8px;padding:7px 9px;border-radius:7px;text-align:center}
 .dirn.go{background:rgba(75,201,224,.12);color:var(--cyan)}
 .dirn.done{background:rgba(78,207,158,.12);color:var(--mint)}
-.dirn.stale{background:rgba(239,106,95,.14);color:var(--red)}
+.dirn.down{background:rgba(239,106,95,.14);color:var(--red)}
 .mons{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
 @media(max-width:820px){.mons{grid-template-columns:1fr}}
 .mon{background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:10px 11px}
@@ -407,19 +407,18 @@ const esc=s=>String(s??'').replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp
 // encoders until a session was already under way. A whole alignment could be
 // set up against an IOC that was never there.
 //
-// Three states, because connected-but-not-updating is a different fault from
-// not connected at all, and they need different actions: a stale encoder is
-// usually the PLC link, a disconnected one is usually the network or the port.
+// Connected or not, and nothing else. An encoder's timestamp age is NOT a
+// health signal here: the rig sits still for most of a measurement and the
+// records only process when the PLC value changes, so a healthy static encoder
+// carries an old timestamp and any age-based warning is noise.
 // ---------------------------------------------------------------------------
 let CAPOLL=null;
 
 function caState(readings){
   const ids=Object.keys(readings||{});
-  if(!ids.length)return{cls:'idle',up:0,total:0,down:[],stale:[]};
+  if(!ids.length)return{cls:'idle',up:0,total:0,down:[]};
   const down=ids.filter(k=>readings[k].absolute===null||readings[k].absolute===undefined);
-  const stale=ids.filter(k=>down.indexOf(k)<0&&readings[k].stale);
-  return{cls:down.length?'bad':(stale.length?'warn':'ok'),
-         up:ids.length-down.length,total:ids.length,down,stale};
+  return{cls:down.length?'bad':'ok',up:ids.length-down.length,total:ids.length,down};
 }
 
 function paintCa(st,readings,temp){
@@ -436,8 +435,7 @@ function paintCa(st,readings,temp){
     chip.textContent='simulated — no IOC';
   }else{
     chip.className='chip '+(st.cls==='idle'?'idle':st.cls);
-    chip.textContent=st.cls==='idle'?'no data'
-      :`${st.up}/${st.total} encoders`+(st.stale.length?` · ${st.stale.length} stale`:'');
+    chip.textContent=st.cls==='idle'?'no data':`${st.up}/${st.total} encoders`;
   }
 
   // Warn, never block: if the link is down the operator needs this page to
@@ -449,11 +447,6 @@ function paintCa(st,readings,temp){
       +'You can still start a session, but there is no live readback and the '
       +'on-target gate cannot pass. Check the PV names and the Channel Access '
       +'settings below against the IOC.';
-  }else if(st.cls==='warn'){
-    w.className='banner warn';
-    w.innerHTML='■ <b>'+st.stale.length+' encoder(s) connected but not updating.</b> '
-      +'The IOC is reachable, so this is usually the link from the IOC to the PLC '
-      +'rather than the network.';
   }else w.className='banner warn hidden';
 
   // Detail: the same eight rows `dls-deb-girder-alignment check` prints, so a
@@ -462,8 +455,8 @@ function paintCa(st,readings,temp){
   Object.keys(readings||{}).forEach(k=>{
     const r=readings[k]||{};
     const bad=r.absolute===null||r.absolute===undefined;
-    const cls=bad?'c-bad':(r.stale?'c-warn':'c-ok');
-    const status=bad?('not connected'+(r.error?' — '+esc(r.error):'')):(r.stale?'stale':'ok');
+    const cls=bad?'c-bad':'c-ok';
+    const status=bad?('not connected'+(r.error?' — '+esc(r.error):'')):'connected';
     rows.push(`<tr><td>${esc(k)}</td><td class="c-idle">${esc(r.pv||'')}</td>`
       +`<td style="text-align:right" class="${cls}">${bad?'—':fmt(r.absolute)}</td>`
       +`<td class="${cls}">${status}</td></tr>`);
@@ -475,10 +468,10 @@ function paintCa(st,readings,temp){
     Object.keys(temp.sensors).forEach(pv=>{
       const d=temp.sensors[pv]||{};
       const bad=d.value===null||d.value===undefined;
-      const cls=bad?'c-bad':(d.stale?'c-warn':'c-ok');
+      const cls=bad?'c-bad':'c-ok';
       rows.push(`<tr><td class="c-idle">temp</td><td class="c-idle">${esc(pv)}</td>`
         +`<td style="text-align:right" class="${cls}">${bad?'—':Number(d.value).toFixed(2)+' °C'}</td>`
-        +`<td class="${cls}">${bad?('not connected'+(d.error?' — '+esc(d.error):'')):(d.stale?'stale':'ok')}</td></tr>`);
+        +`<td class="${cls}">${bad?('not connected'+(d.error?' — '+esc(d.error):'')):'connected'}</td></tr>`);
     });
   }
   $('caRows').innerHTML=rows.join('')||'<tr><td colspan="4" class="c-idle">no data</td></tr>';
@@ -497,7 +490,7 @@ async function caCheck(){
     paintCa(caState(e&&e.readings),(e&&e.readings)||{},t);
   }catch(err){
     console.warn('CA status poll failed',err);
-    paintCa({cls:'idle',up:0,total:0,down:[],stale:[]},{},null);
+    paintCa({cls:'idle',up:0,total:0,down:[]},{},null);
   }
 }
 
@@ -628,8 +621,8 @@ $('btnUndoSurvey').addEventListener('click',async()=>{
   $('fFile').value='';
   render(); drawViz();
 });
-// The temperature feed is live data, so its health has to be visible: a stale or
-// dead sensor must never look like a good reading that just happens to be steady.
+// The temperature feed is live data, so its health has to be visible: a dead
+// sensor must never be averaged into a reading that then looks trustworthy.
 async function refreshTemp(){
   const box=$('rTempBox'), val=$('rTemp'), note=$('tempNote');
   try{
@@ -766,7 +759,7 @@ async function tick(){
 // step opens, so the bar shows how much of THIS move is done rather than an
 // absolute position that would mean nothing to the technician.
 const MOVE_START={};
-function progressBar(rel,tgt,ok,stale){
+function progressBar(rel,tgt,ok){
   if(rel==null)return '<div class="prog"><div class="track"></div><div class="lbl"><span>no reading</span></div></div>';
   const key=SESS.id+':'+SESS.step_index+':'+tgt.toFixed(6);
   if(MOVE_START[key]===undefined)MOVE_START[key]=rel;
@@ -774,11 +767,11 @@ function progressBar(rel,tgt,ok,stale){
   let frac = Math.abs(span)<1e-9 ? 1 : (rel-s)/span;
   const over = frac>1.02;
   frac=Math.max(0,Math.min(1.15,frac));
-  const cls=stale?'bg-bad':(ok?'bg-ok':(over?'bg-warn':'bg-ok'));
+  const cls=ok?'bg-ok':(over?'bg-warn':'bg-ok');
   const pct=Math.min(100,frac*100/1.15);
   const tickPct=100/1.15;
   return `<div class="prog">
-    <div class="track"><div class="fill ${cls}" style="width:${pct}%;opacity:${stale?.4:.85}"></div>
+    <div class="track"><div class="fill ${cls}" style="width:${pct}%;opacity:.85"></div>
       <div class="tick" style="left:${tickPct}%"></div>
       <div class="tickcap" style="left:${tickPct}%">TARGET</div></div>
     <div class="lbl"><span>from ${fmt(s,3)}</span>
@@ -792,11 +785,13 @@ function renderLive(r){
 
   $('actives').innerHTML=Object.keys(step.targets).map(eid=>{
     const rd=r.readings[eid]||{},p=per[eid]||{};
-    const rel=rd.relative,tgt=step.targets[eid],err=(rel==null?null:rel-tgt),stale=rd.stale;
-    const ok=p.ok&&!stale;
-    const cls=stale?'stale':(ok?'on':'off');
+    const rel=rd.relative,tgt=step.targets[eid],err=(rel==null?null:rel-tgt);
+    // Down, not stale: an encoder whose timestamp is old is simply a girder
+    // that is not moving. One with no value at all cannot be adjusted against.
+    const down=rel==null,ok=!!p.ok;
+    const cls=down?'down':(ok?'on':'off');
     let dirn,dcls;
-    if(stale){dirn='READING STALE — DO NOT ADJUST';dcls='stale';}
+    if(down){dirn='NOT CONNECTED — DO NOT ADJUST';dcls='down';}
     else if(ok){dirn='ON TARGET';dcls='done';}
     else{const need=-err;
       dirn=step.kind==='horizontal'
@@ -806,13 +801,13 @@ function renderLive(r){
     const fin=step.final_targets?step.final_targets[eid]:null;
     return `<div class="act ${cls}">
       <div class="id">${eid}</div>
-      <div class="big ${stale?'c-bad':(ok?'c-ok':'')}">${rel==null?'—':fmt(rel,3)}</div>
+      <div class="big ${down?'c-bad':(ok?'c-ok':'')}">${rel==null?'—':fmt(rel,3)}</div>
       <div class="row"><span>target</span><b>${fmt(tgt,3)}</b></div>
       <div class="row"><span>error</span><b class="${ok?'c-ok':'c-warn'}">${fmt(err,4)}</b></div>
       <div class="row"><span>absolute</span><b>${rd.absolute==null?'—':fmt(rd.absolute,3)}</b></div>
       ${(fin!=null&&Math.abs(fin-tgt)>1e-6)?`<div class="row"><span>settles to</span><b class="c-idle">${fmt(fin,3)}</b></div>`:''}
-      <div class="row"><span>age</span><b class="${stale?'c-bad':'c-idle'}">${rd.age==null?'—':rd.age.toFixed(1)+'s'}</b></div>
-      ${progressBar(rd.relative,tgt,ok,stale)}
+      <div class="row"><span>age</span><b class="c-idle">${rd.age==null?'—':rd.age.toFixed(1)+'s'}</b></div>
+      ${progressBar(rd.relative,tgt,ok)}
       <div class="dirn ${dcls}">${dirn}</div></div>`;}).join('');
 
   const par=r.parasitic||{};
@@ -824,7 +819,7 @@ function renderLive(r){
     const dev=(rd.relative==null||ex==null)?null:rd.relative-ex;
     const bad=dev!=null&&Math.abs(dev)>Math.max(gate*3,0.02);
     return `<div class="mrow"><span class="n">${e}</span>
-      <span class="v ${rd.stale?'c-bad':(bad?'c-warn':'')}">${rd.relative==null?'—':fmt(rd.relative,3)}</span></div>
+      <span class="v ${rd.relative==null?'c-bad':(bad?'c-warn':'')}">${rd.relative==null?'—':fmt(rd.relative,3)}</span></div>
       ${ex!=null?`<div class="mrow" style="padding-top:0"><span class="d">expected ${fmt(ex,3)}</span>
       <span class="d ${bad?'c-warn':''}">${dev==null?'':'Δ '+fmt(dev,3)}</span></div>`:''}`;};
   const pbar=(v,warn,stop,name,sub)=>{

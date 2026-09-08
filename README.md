@@ -310,15 +310,19 @@ absolute readings have just moved.
   (vertical twist) and STRETCH (differential surge), and they are the left null
   space of the Jacobian. Warn at 0.003 mm, stop at 0.005 mm. The gate tests them
   too: on target with WARP out of limit is not a step to wave through.
-- **Stale readings.** A frozen PV looks exactly like a stationary girder, so
-  every reading carries its age and goes visibly stale rather than showing the
-  last good value.
+- **Connection, not freshness.** Every reading carries the age of its
+  timestamp, and that age is reported but never judged. These encoder records
+  only process when the PLC value changes, so a girder that has stopped moving
+  carries an old timestamp on all eight — age-based staleness flagged the
+  normal case as a fault, and blocked the gate exactly when the step had been
+  completed. What is checked is connection: a PV that is not connected has no
+  value, the reading shows NOT CONNECTED and the gate will not pass.
 - **Stage encoders are monitored during vertical moves.** They should barely
   move; if they do, the girder is riding a spherical bearing.
 - **Expected values** are shown for monitored encoders, so "moved as expected
   because the girder tilted" is distinguishable from "moved unexpectedly".
 - **Step back is not undo.** The UI can rewind; the steel cannot. Re-opening a
-  step never replays stale targets. If the pose has drifted, *Abandon iteration*
+  step never replays superseded targets. If the pose has drifted, *Abandon iteration*
   and re-survey — that is the honest recovery.
 - **Overrides are recorded** with the operator's name and reason, and appear in
   the report.

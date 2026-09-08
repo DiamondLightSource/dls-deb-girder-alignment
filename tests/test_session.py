@@ -15,14 +15,13 @@ def _step(session: Session) -> dict:
     return step
 
 
-def _readings(values: dict[str, float], stale: bool = False) -> dict[str, dict]:
+def _readings(values: dict[str, float]) -> dict[str, dict]:
     """Fake encoder readings already measured from the datum."""
     return {
         eid: {
             "encoder": eid,
             "relative": values.get(eid, 0.0),
             "absolute": values.get(eid, 0.0),
-            "stale": stale,
         }
         for eid in G.ENCODER_IDS
     }
@@ -83,12 +82,29 @@ def test_gate_passes_on_target(session: Session):
     assert chk["ok"], chk["reasons"]
 
 
-def test_gate_rejects_stale_readings(session: Session):
-    """A frozen PV looks exactly like a stationary girder."""
+def test_gate_ignores_the_age_of_a_reading(session: Session):
+    """A static encoder is the normal case, not a fault.
+
+    These records only process when the PLC value changes, so a girder that has
+    stopped moving carries an old timestamp on every encoder. Gating on age
+    refused to pass a step exactly when it had been completed.
+    """
     step = _step(session)
-    chk = session.check_step(_readings(step["expected"], stale=True), step)
+    r = _readings(step["expected"])
+    for d in r.values():
+        d["age"] = 3600.0
+    assert session.check_step(r, step)["ok"]
+
+
+def test_gate_rejects_a_disconnected_encoder(session: Session):
+    """No value at all is a different thing, and still blocks the step."""
+    step = _step(session)
+    r = _readings(step["expected"])
+    r["V_US_IN"]["relative"] = None
+    r["V_US_IN"]["absolute"] = None
+    chk = session.check_step(r, step)
     assert not chk["ok"]
-    assert any("stale" in r for r in chk["reasons"])
+    assert any("V_US_IN" in reason for reason in chk["reasons"])
 
 
 def test_gate_rejects_a_parasitic_excursion(session: Session):

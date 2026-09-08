@@ -345,7 +345,6 @@ class Session:
         per, worst, missing = {}, 0.0, False
         for eid, tgt in step["targets"].items():
             rel = (readings.get(eid) or {}).get("relative")
-            stale = (readings.get(eid) or {}).get("stale", True)
             if rel is None:
                 per[eid] = {
                     "target": float(tgt),
@@ -357,13 +356,11 @@ class Session:
                 missing = True
                 continue
             e = rel - tgt
-            ok = bool(abs(e) <= self.gate_mm and not stale)
             per[eid] = {
                 "target": float(tgt),
                 "actual": float(rel),
                 "error": float(e),
-                "ok": ok,
-                "stale": bool(stale),
+                "ok": bool(abs(e) <= self.gate_mm),
             }
             worst = max(worst, abs(float(e)))
 
@@ -371,15 +368,12 @@ class Session:
         warp, stretch = self.machine.parasitic_of(vec)
         par_ok = bool(abs(warp) <= G.WARP_STOP and abs(stretch) <= G.STRETCH_STOP)
 
-        stale_any = any(
-            (readings.get(e) or {}).get("stale", True) for e in step["targets"]
-        )
-        ok = bool(
-            all(v["ok"] for v in per.values())
-            and par_ok
-            and not stale_any
-            and not missing
-        )
+        # A reading's age is deliberately not part of this. The encoders are
+        # static for most of a measurement and their records only process on
+        # change, so an old timestamp is normal; gating on it would refuse to
+        # pass a step exactly when the girder has stopped moving. A PV that is
+        # not connected has no value, which `missing` already catches.
+        ok = bool(all(v["ok"] for v in per.values()) and par_ok and not missing)
         reasons = []
         if missing:
             gone = [e for e, v in per.items() if v.get("actual") is None]
@@ -395,8 +389,6 @@ class Session:
             reasons.append(
                 f"parasitic limit exceeded: WARP {warp:+.4f}, STRETCH {stretch:+.4f} mm"
             )
-        if stale_any:
-            reasons.append("one or more readings are stale")
 
         return {
             "ok": ok,

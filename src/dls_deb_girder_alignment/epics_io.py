@@ -11,8 +11,12 @@ whole pyepics / CA-gateway / archiver-fallback apparatus the bay-PC version
 needed is gone; ``cothread`` is the one live backend, with a simulator for
 training and development.
 
-A frozen PV looks exactly like a stationary girder, so every reading carries the
-age of its timestamp and the UI shows stale values as stale.
+Every reading carries the age of its timestamp, which is reported for
+diagnostics. It is NOT used to judge a reading: these encoders sit still for
+long stretches while a girder is measured, and the records only process when
+the PLC value changes, so an old timestamp is the normal state of a healthy
+encoder rather than a fault. Connection is the thing worth reporting, and a
+disconnected PV has no value at all.
 """
 
 from __future__ import annotations
@@ -23,9 +27,6 @@ import threading
 import time
 from dataclasses import asdict, dataclass
 from typing import Any, cast
-
-STALE_AFTER_S = 3.0
-"""A reading older than this is flagged stale."""
 
 
 @dataclass
@@ -44,9 +45,7 @@ class Reading:
 
     def as_dict(self) -> dict[str, Any]:
         d = asdict(self)
-        age = self.age
-        d["age"] = age
-        d["stale"] = (age is None) or (age > STALE_AFTER_S)
+        d["age"] = self.age
         return d
 
 
@@ -252,13 +251,12 @@ class TemperatureService:
         bad: list[str] = []
         for pv in self.sensor_pvs:
             r = raw.get(pv)
-            d = r.as_dict() if r else {"value": None, "stale": True, "error": "no data"}
+            d = r.as_dict() if r else {"value": None, "error": "no data"}
             detail[pv] = d
-            if r and r.value is not None and not d.get("stale"):
+            if r and r.value is not None:
                 used.append(float(r.value))
             else:
-                why = d.get("error") or ("stale" if d.get("stale") else "no value")
-                bad.append(f"{pv} ({why})")
+                bad.append(f"{pv} ({d.get('error') or 'no value'})")
 
         n_used, n_total = len(used), len(self.sensor_pvs)
         spread = (max(used) - min(used)) if len(used) > 1 else 0.0
@@ -284,7 +282,7 @@ class TemperatureService:
 
 
 class EncoderService:
-    """Maps encoder ids to PVs and reports staleness.
+    """Maps encoder ids to PVs and reports connection state.
 
     Deliberately stateless. The encoders are zeroed in the IOC, and the *plan
     datum* - the reading each encoder had when the current move group opened,

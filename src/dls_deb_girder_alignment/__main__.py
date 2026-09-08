@@ -141,9 +141,9 @@ def check(args: Namespace) -> None:
         for eid in G.ENCODER_IDS:
             r = readings[eid]
             val = "—" if r["absolute"] is None else f"{r['absolute']:+9.4f}"
-            flag = "STALE" if r["stale"] else "ok"
-            if r["absolute"] is None:
-                flag = f"NOT CONNECTED ({r['error']})"
+            flag = (
+                "ok" if r["absolute"] is not None else f"NOT CONNECTED ({r['error']})"
+            )
             print(f"  {eid:<9} {r['pv']:<32} {val}  {flag}")
         t = temp.read()
         tv = "—" if t["temperature"] is None else f"{t['temperature']:.2f} C"
