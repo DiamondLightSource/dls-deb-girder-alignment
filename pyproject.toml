@@ -32,7 +32,7 @@ readme = "README.md"
 # its coroutine bootstrap - not an exception, an interpreter crash. It does work
 # on 3.13. The container builds on 3.11 (.python-version), so this bound costs
 # the deployment nothing; lift it when cothread supports 3.14.
-requires-python = ">=3.11,<3.14"
+requires-python = ">=3.14,<3.15"
 
 [dependency-groups]
 dev = [
