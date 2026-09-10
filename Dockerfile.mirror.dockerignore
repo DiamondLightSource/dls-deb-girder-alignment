@@ -1,0 +1,4 @@
+# The mirror needs only the standalone script, not local reports or sessions.
+**
+!scripts/
+!scripts/mirror_reports.py

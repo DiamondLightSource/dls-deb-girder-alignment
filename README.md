@@ -90,7 +90,7 @@ scripts/mirror_reports.py --url https://deb-girder-bay-01.diamond.ac.uk \
                           --dest /dls/sdrive/<group>/girder-alignment/bay1 --sessions
 ```
 
-It only ever adds files, so running it repeatedly is harmless. **Reports on the
+It adds missing reports and never deletes them. **Reports on the
 deployment's PersistentVolumeClaim are not backed up**; see the header of the
 script for why the mirror is pulled from outside rather than written from the
 pod.
@@ -102,6 +102,67 @@ content the database holds — so this covers only the sessions that never
 produced a report: abandoned partway, or open when the volume is lost. It is
 pulled as JSON rather than by copying `sessions.sqlite`, because a file copy
 taken while the service is writing can be torn.
+
+### Containerised report mirror
+
+Run the mirror on an always-on machine that can reach the web service and has
+the backed-up group share mounted with write access. It needs no Channel Access
+connection or access to the application's PVC. Running the script directly
+requires Python 3.11 or newer; the separate mirror image includes Python and
+does not install the web application.
+
+Build from this repository's root:
+
+```bash
+docker build -f Dockerfile.mirror -t girder-report-mirror .
+```
+
+`Dockerfile.mirror` is the separate build recipe for this image.
+`Dockerfile.mirror.dockerignore` filters its build context, like `.gitignore`
+filters files for Git: only the mirror script is included. The release workflow
+publishes `ghcr.io/diamondlightsource/dls-deb-girder-alignment-mirror:<tag>`
+alongside the web application's image, using the same release tag.
+
+Create a directory on the share, replacing `<group>` with your actual group.
+Use a separate destination for each bay because report names do not include
+the bay. Run as an account with permission to write there:
+
+```bash
+mkdir -p /dls/sdrive/<group>/girder-alignment/bay1
+docker run --rm \
+  --user "$(id -u):$(id -g)" \
+  --mount type=bind,src=/dls/sdrive/<group>/girder-alignment/bay1,dst=/backup \
+  girder-report-mirror \
+  --url https://deb-girder-bay-01.diamond.ac.uk \
+  --dest /backup --sessions
+```
+
+If share access requires a supplementary group, also pass its numeric GID with
+`--group-add`. Add `--dry-run` to check the report listing without copying;
+this does not test destination writes or download the session export.
+
+The container runs once and exits. For example, save the `docker run` command
+above in an executable `/home/mirror/bin/mirror-bay1`, then add this to that
+account's crontab (adjust the paths to match the account):
+
+```cron
+*/15 * * * * /usr/bin/flock -n /home/mirror/mirror-bay1.lock /home/mirror/bin/mirror-bay1 >> /home/mirror/mirror-bay1.log 2>&1
+```
+
+The wrapper should start with `#!/bin/sh` and use the absolute path to Docker
+on that host. Ensure the share is mounted before running it, and monitor the
+log for failed runs. All runs for the same destination, including manual runs,
+must use the same lock: the script's `.part` filenames are shared. To run the
+wrapper manually with the lock:
+
+```bash
+/usr/bin/flock -n /home/mirror/mirror-bay1.lock /home/mirror/bin/mirror-bay1
+```
+
+A Kubernetes CronJob is also possible with `concurrencyPolicy: Forbid`, but it
+must mount the backed-up destination. The accelerator IOC nodes do not mount
+`/dls`; containerising the mirror does not provide that mount. Another PVC in
+the same cluster is not a substitute for backed-up storage.
 
 ---
 

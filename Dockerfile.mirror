@@ -1,0 +1,7 @@
+# Build from the repository root with -f Dockerfile.mirror.
+# Run once; schedule on a host with the backed-up share mounted.
+FROM python:3.11-slim
+
+COPY scripts/mirror_reports.py /app/mirror_reports.py
+
+ENTRYPOINT ["python", "-u", "/app/mirror_reports.py"]

@@ -31,10 +31,10 @@ be torn and may not open.
 
 SAFETY. This only ever adds. It never deletes, never overwrites a report, and
 downloads to ``<name>.part`` before renaming into place, so an interrupted run
-cannot leave a truncated PDF that later looks complete. Running it twice, or
-twice at once, is harmless. The one file it replaces is the current day's
-session snapshot, which is the point of a snapshot - and only ever with a newer
-one from the same source.
+cannot leave a truncated PDF that later looks complete. Repeated runs are safe,
+but overlapping runs must be prevented by the scheduler: they share the same
+temporary filenames. The one file it replaces is the current day's session
+snapshot, which is the point of a snapshot.
 
 Standard library only, so it needs no virtualenv on the machine that runs it.
 """

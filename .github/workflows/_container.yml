@@ -8,6 +8,15 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - dockerfile: Dockerfile
+            image-suffix: ""
+            test-argument: --version
+          - dockerfile: Dockerfile.mirror
+            image-suffix: -mirror
+            test-argument: --help
 
     steps:
       - name: Checkout
@@ -34,18 +43,19 @@ jobs:
           DOCKER_BUILD_RECORD_UPLOAD: false
         with:
           context: .
+          file: ${{ matrix.dockerfile }}
           # Need load and tags so we can test it below
           load: true
           tags: tag_for_testing
 
       - name: Test cli works in cached runtime image
-        run: docker run --rm tag_for_testing --version
+        run: docker run --rm tag_for_testing ${{ matrix.test-argument }}
 
       - name: Create tags for publishing image
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: ghcr.io/${{ github.repository }}${{ matrix.image-suffix }}
           tags: |
             type=ref,event=tag
             type=raw,value=latest
@@ -59,6 +69,7 @@ jobs:
         # Docker cache and publish it
         with:
           context: .
+          file: ${{ matrix.dockerfile }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
