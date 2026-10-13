@@ -29,8 +29,8 @@ uv run dls-deb-girder-alignment serve --demo --config example/config/config.yaml
 
 Open <http://localhost:8080/> and:
 
-1. Serial `DLS0011116`, any operator name, **Start session** (Combined vertical
-   is on by default).
+1. Serial `DLS0011116`, any operator name, **Start session** (Bare girder and
+   Combined vertical are on by default — keep them).
 2. Load `example/surveys/ms_DLS0011116_initial.csv`. The fit comes back at about
    0.02 mm RMS with every axis out of tolerance — review the pose error, then
    **Accept survey — generate correction steps** to build the four-step plan.
@@ -555,6 +555,7 @@ src/dls_deb_girder_alignment/
     server.py        Flask service and REST API
     geometry.py      AUTHORITATIVE maths: frames, Jacobian, pose fit, planner
     _geom_data.py    generated geometry for MS/LM/ML/SM
+    _fea_data.py     FEA warp compliance and bare-girder heave pre-set
     epics_io.py      Channel Access via cothread, plus the simulator
     session.py       state machine, SQLite persistence, gating, plan datum
     report.py        PDF + JSON generation
@@ -564,6 +565,9 @@ src/dls_deb_girder_alignment/
 example/
     config/          deployment template: copy into a service's config/
     surveys/         example surveys for the demo, and a generator
+scripts/
+    mirror_reports.py   copy reports off a deployment to backed-up storage
+    calibrate.py        suggest FEA/geometry corrections from session exports
 ```
 
 The tests load `example/config/` and cover the geometry invariants the rest of
