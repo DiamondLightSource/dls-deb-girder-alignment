@@ -73,6 +73,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--cyan)}
 .act.on{border-color:rgba(78,207,158,.5);box-shadow:0 0 0 1px rgba(78,207,158,.18)}
 .act.off{border-color:rgba(237,179,76,.45)}
 .act.down{border-color:rgba(239,106,95,.6);background:rgba(239,106,95,.05)}
+.act.wrong{border-color:var(--red);background:rgba(239,106,95,.16);box-shadow:0 0 0 2px rgba(239,106,95,.35)}
 .act .id{font-family:var(--mono);font-size:12px;color:var(--muted);letter-spacing:.04em}
 .act .big{font-family:var(--mono);font-size:44px;font-weight:600;line-height:1.05;margin:6px 0 2px;letter-spacing:-.02em}
 .act .row{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11.5px;color:var(--muted);padding:2px 0}
@@ -81,6 +82,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--cyan)}
 .dirn.go{background:rgba(75,201,224,.12);color:var(--cyan)}
 .dirn.done{background:rgba(78,207,158,.12);color:var(--mint)}
 .dirn.down{background:rgba(239,106,95,.14);color:var(--red)}
+.dirn.wrong{background:var(--red);color:#fff}
 .mons{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px}
 @media(max-width:820px){.mons{grid-template-columns:1fr}}
 .mon{background:var(--bg2);border:1px solid var(--line);border-radius:9px;padding:10px 11px}
@@ -115,13 +117,13 @@ table.log td{padding:5px 6px;border-bottom:1px solid rgba(38,49,63,.45)}
 .modal .box{background:var(--panel);border:1px solid var(--line2);border-radius:14px;max-width:520px;width:100%;padding:20px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
 .modal h3{margin:0 0 8px;font-size:15px}
 .prog{margin-top:16px}
-.prog .track{height:14px;border-radius:7px;background:#0a0e13;border:1px solid var(--line);position:relative}
-.prog .fill{position:absolute;top:0;bottom:0;border-radius:4px;transition:width .25s,background .25s}
-.prog .tick{position:absolute;top:-5px;bottom:-5px;width:4px;background:#fff;border-radius:2px;
+.prog .track{height:30px;border-radius:9px;background:#0a0e13;border:1px solid var(--line);position:relative}
+.prog .fill{position:absolute;top:0;bottom:0;border-radius:6px;transition:width .25s,background .25s}
+.prog .tick{position:absolute;top:-6px;bottom:-6px;width:5px;background:#fff;border-radius:2px;
   box-shadow:0 0 0 1px rgba(0,0,0,.55),0 0 7px rgba(255,255,255,.6);z-index:2}
-.prog .tickcap{position:absolute;top:-11px;font-family:var(--mono);font-size:8px;color:#fff;
+.prog .tickcap{position:absolute;top:-13px;font-family:var(--mono);font-size:8px;color:#fff;
   transform:translateX(-50%);letter-spacing:.04em;text-shadow:0 0 4px #000}
-.prog .lbl{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;color:var(--faint);margin-top:3px}
+.prog .lbl{display:flex;justify-content:space-between;font-family:var(--mono);font-size:9px;color:var(--faint);margin-top:4px}
 .picker{max-height:320px;overflow:auto;margin:10px 0;border:1px solid var(--line);border-radius:9px}
 .pick{display:flex;justify-content:space-between;gap:10px;padding:9px 11px;cursor:pointer;border-bottom:1px solid rgba(38,49,63,.5);font-size:12px}
 .pick:last-child{border-bottom:0}
@@ -176,12 +178,20 @@ table.log td{padding:5px 6px;border-bottom:1px solid rgba(38,49,63,.45)}
             <div class="note" id="bayNote">Fixed by this deployment.</div>
           </div>
         </div>
+        <div style="margin-top:12px">
+          <label class="f">Girder state</label>
+          <div class="seg" id="segLoaded">
+            <button data-l="0" aria-pressed="true">Bare girder</button>
+            <button data-l="1" aria-pressed="false">Loaded with magnets</button>
+          </div>
+          <div class="note" id="loadedNote">Bare: the heave target is pre-set high to reduce magnet-adjuster travel once loaded. Loaded: aligns straight to true nominal, no pre-set.</div>
+        </div>
         <div class="grid3" style="margin-top:12px">
           <div>
             <label class="f">Vertical mode</label>
             <div class="seg" id="segCombine">
-              <button data-c="0" aria-pressed="true">Flatten then heave</button>
-              <button data-c="1" aria-pressed="false">Combined</button>
+              <button data-c="0" aria-pressed="false">Flatten then heave</button>
+              <button data-c="1" aria-pressed="true">Combined</button>
             </div>
           </div>
           <div>
@@ -226,15 +236,25 @@ table.log td{padding:5px 6px;border-bottom:1px solid rgba(38,49,63,.45)}
 
   <!-- ============ SESSION ============ -->
   <div id="viewSession" class="hidden">
-    <div class="card"><div class="stepper" id="stepper"></div></div>
+    <div class="card"><div class="stepper" id="stepper"></div>
+      <div class="note" id="loopNote" style="padding:0 14px 10px;display:flex;align-items:center;justify-content:center;text-align:center">
+        <span id="loopText">Confirm loops back to Solve if the survey is still out of spec.</span>
+      </div>
+    </div>
 
     <div class="card" id="cardSurvey">
       <div class="card-h"><h2>Survey</h2><span class="chip idle" id="fitChip">Awaiting survey</span></div>
       <div class="card-b">
+        <div id="verifyNote" class="banner warn hidden">All correction steps are complete — upload a confirmation survey to verify the alignment. If it's still out of spec, this loops back to Solve for another round.</div>
         <div class="grid2">
           <div>
             <label class="f">Upload measured points (CSV: X,Y,Z — name column optional)</label>
             <input type="file" id="fFile" accept=".csv,.txt" style="font-size:12px">
+            <div style="margin-top:10px">
+              <label class="f">Comment (optional — recorded with this survey and shown in the report)</label>
+              <textarea id="fComment" rows="2" placeholder="e.g. tripod position, anything unusual about this survey"
+                style="width:100%;font-family:inherit;font-size:12px;resize:vertical;padding:6px 8px;box-sizing:border-box"></textarea>
+            </div>
             <div style="margin-top:10px;display:flex;gap:10px;align-items:end">
               <div style="flex:1"><label class="f">Air temp °C (blank = read from bay sensors)</label>
                 <input type="number" id="fTemp" step="0.1" placeholder="auto"></div>
@@ -248,6 +268,7 @@ table.log td{padding:5px 6px;border-bottom:1px solid rgba(38,49,63,.45)}
             <div class="mrow"><span class="n">Max residual</span><span class="v mono" id="sMax">—</span></div>
             <div class="mrow"><span class="n">Geometry rev</span><span class="v mono" id="sRev">—</span></div>
             <div class="mrow"><span class="n">Survey file</span><span class="v mono" id="sFile">—</span></div>
+            <div class="mrow hidden" id="sCommentRow"><span class="n">Comment</span><span class="v" id="sComment">—</span></div>
             <div style="margin-top:10px">
               <button class="btn ghost hidden" id="btnUndoSurvey" style="padding:7px 12px;font-size:12px">
                 ↩ Wrong file — load a different survey</button>
@@ -258,9 +279,15 @@ table.log td{padding:5px 6px;border-bottom:1px solid rgba(38,49,63,.45)}
       </div>
     </div>
 
-    <div class="card">
+    <div class="card" id="cardPose">
       <div class="card-h"><h2>Pose error vs target</h2><span class="chip idle" id="poseChip">—</span></div>
-      <div class="card-b"><div id="dofList"></div></div>
+      <div class="card-b">
+        <div id="dofList"></div>
+        <div id="acceptBox" class="hidden" style="margin-top:14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <button class="btn primary" id="btnAcceptPlan">Accept survey — generate correction steps</button>
+          <span class="note">Review the pose error above, then confirm to build the move plan.</span>
+        </div>
+      </div>
     </div>
 
     <div class="card" id="cardViz">
@@ -297,19 +324,23 @@ table.log td{padding:5px 6px;border-bottom:1px solid rgba(38,49,63,.45)}
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <span class="chip idle" id="gateChip">—</span>
           <span class="chip idle" id="datumChip" title="Targets are measured from the encoder readings taken when this move group opened">datum —</span>
-          <button class="btn danger" id="btnZero" style="padding:6px 12px;font-size:12px"
-                  title="Writes a new zero offset into the IOC. Not undoable from here.">Zero encoders</button>
         </div>
       </div>
       <div class="card-b">
         <div id="moveNote" class="banner warn"></div>
         <div class="actives" id="actives"></div>
         <div class="mons" id="monitors"></div>
+        <div style="margin-top:12px">
+          <label class="f">Notes for this step (optional — recorded with this move and shown in the report)</label>
+          <textarea id="fStepNote" rows="2" placeholder="e.g. anything unusual noticed while making this move"
+            style="width:100%;font-family:inherit;font-size:12px;resize:vertical;padding:6px 8px;box-sizing:border-box"></textarea>
+        </div>
         <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
           <button class="btn good" id="btnDone">Confirm step complete</button>
           <button class="btn ghost" id="btnBack">◀ Previous step</button>
           <button class="btn ghost" id="btnAbandon">Abandon iteration &amp; re-survey</button>
           <span style="flex:1"></span>
+          <button class="btn ghost hidden" id="btnDriveWrong" title="Drives away from target for a few seconds first, then corrects - for testing the wrong-way flag.">Simulate move (wrong way first)</button>
           <button class="btn ghost hidden" id="btnDrive">Simulate move</button>
         </div>
       </div>
@@ -372,6 +403,16 @@ table.log td{padding:5px 6px;border-bottom:1px solid rgba(38,49,63,.45)}
   </div>
 </div>
 
+<div class="modal hidden" id="svResModal">
+  <div class="box">
+    <h3 id="svResTitle">Survey result</h3>
+    <div id="svResBody" class="note" style="margin-bottom:12px"></div>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn primary" id="svResOk">OK</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal hidden" id="ovModal">
   <div class="box">
     <h3>Step is not within tolerance</h3>
@@ -394,7 +435,7 @@ const API={
   async upload(p,fd){const r=await fetch(p,{method:'POST',body:fd});return r.json();}
 };
 let INFO=null,SESS=null,POLL=null;
-const OPTS={combine:0,pairing:'end',first:0};
+const OPTS={combine:1,pairing:'end',first:0,loaded:0};
 const fmt=(v,n=3)=>(v===null||v===undefined)?'—':(v>=0?'+':'')+Number(v).toFixed(n);
 const esc=s=>String(s??'').replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c]));
 
@@ -513,7 +554,8 @@ function startCaPoll(){
   $('fGate').value=INFO.gate_default_mm;
   Object.keys(INFO.types).sort().forEach(t=>{
     const o=document.createElement('option');o.value=t;o.textContent=t;$('fType').appendChild(o);});
-  if(INFO.demo)$('btnDrive').classList.remove('hidden');
+  updateLoadedNote();
+  if(INFO.demo){$('btnDrive').classList.remove('hidden');$('btnDriveWrong').classList.remove('hidden');}
   $('fBay').textContent=INFO.bay||INFO.domain||'—';
   $('bayNote').textContent=`${INFO.sensor_pvs.length} temperature sensor(s) · encoders ${INFO.domain}`;
   $('fFolder').placeholder=INFO.default_report_dir||'default reports folder';
@@ -555,22 +597,44 @@ $('fSerial').addEventListener('blur',async()=>{
   if(r.known){$('fType').value=r.type;
     $('serialNote').innerHTML=`Resolved to <b>${esc(r.type)}</b>${r.notes?' · '+esc(r.notes):''} — confirm it matches the bay.`;}
   else $('serialNote').textContent='Serial not in the lookup table — select the type manually and add it to girder_serials.csv.';
+  updateLoadedNote();
 });
+$('fType').addEventListener('change',updateLoadedNote);
 function seg(id,key,cast){document.querySelectorAll('#'+id+' button').forEach(b=>b.addEventListener('click',()=>{
   OPTS[key]=cast(b.dataset[key[0]]);
   document.querySelectorAll('#'+id+' button').forEach(x=>x.setAttribute('aria-pressed',x===b));
-  if(id==='segPairing')labelFirst();}));}
+  if(id==='segPairing')labelFirst();
+  if(id==='segLoaded')updateLoadedNote();}));}
 seg('segCombine','combine',Number); seg('segPairing','pairing',String); seg('segFirst','first',Number);
+seg('segLoaded','loaded',Number);
 function labelFirst(){const l=OPTS.pairing==='side'?['Inboard','Outboard']:['U/S','D/S'];
   document.querySelectorAll('#segFirst button').forEach((b,i)=>b.textContent=l[i]);}
 labelFirst();
+// The pre-set is per girder TYPE (currently the same value for all four, but
+// not guaranteed to stay that way) - look it up once a type is known rather
+// than hardcoding a figure here, so this note can never drift from reality.
+function updateLoadedNote(){
+  const gtype=$('fType').value;
+  const info=(INFO&&INFO.types&&gtype)?INFO.types[gtype]:null;
+  const bias=info?info.sag_bias_mm:null;
+  const biasTxt=(bias==null||bias===0)?'the recommended amount':`${fmt(bias,3)} mm`;
+  $('loadedNote').textContent=OPTS.loaded
+    ? 'Loaded with magnets: aligns straight to true nominal — no heave pre-set is applied.'
+    : `Bare girder: the heave target is pre-set ${biasTxt} high to reduce magnet-adjuster travel once loaded.`;
+}
 
 $('btnStart').addEventListener('click',async()=>{
   $('setupErr').classList.add('hidden');
-  const r=await API.post('/api/session',{serial:$('fSerial').value.trim(),
+  const body={serial:$('fSerial').value.trim(),
     operator:$('fOperator').value.trim(),type:$('fType').value,
     gate_mm:parseFloat($('fGate').value),combine_vertical:!!OPTS.combine,
-    pairing:OPTS.pairing,first_idx:OPTS.first});
+    pairing:OPTS.pairing,first_idx:OPTS.first};
+  // Bare: omit heave_bias_mm entirely so the session falls back to the
+  // girder type's own recommended pre-set. Loaded: the girder has already
+  // sagged under the magnets' real weight, so that pre-set would be
+  // double-counted - force it to zero instead of just leaving it default.
+  if(OPTS.loaded)body.heave_bias_mm=0.0;
+  const r=await API.post('/api/session',body);
   if(!r.ok){$('setupErr').textContent=r.error;$('setupErr').classList.remove('hidden');return;}
   SESS=r.session; showSession();
 });
@@ -605,9 +669,48 @@ $('btnSurvey').addEventListener('click',async()=>{
   if(!f){alert('Choose a survey file first.');return;}
   const fd=new FormData(); fd.append('file',f);
   if($('fTemp').value)fd.append('temperature',$('fTemp').value);
+  if($('fComment').value.trim())fd.append('comment',$('fComment').value.trim());
+  const hadMoves=SESS&&SESS.n_moves>0; // a re-survey after some real progress
   const r=await API.upload('/api/survey',fd);
   if(!r.ok){$('surveyWarn').textContent=r.error;$('surveyWarn').classList.remove('hidden');return;}
-  SESS=r.session; renderSurvey(r.survey); render(); drawViz();
+  $('fComment').value='';
+  SESS=r.session; renderSurvey(r.survey); render();
+  // A freshly-loaded survey is exactly when seeing the deltas matters most -
+  // switch the view on automatically rather than leave it an easy-to-miss
+  // manual toggle. Only the first time: once the operator has picked a mode
+  // (including deliberately turning it back off), leave it alone.
+  if(typeof setViz==='function'&&VIZ==='off')setViz('plan'); else drawViz();
+  // Make the outcome unmissable for a CONFIRMATION survey (one loaded after
+  // moves have already happened) - the very first survey doesn't need this,
+  // its pose error is already the whole point of the page at that moment.
+  if(hadMoves){
+    const a=r.survey.assessment,ok=a.in_tolerance;
+    $('svResTitle').textContent=ok?'✓ In tolerance':'✗ Not in tolerance';
+    $('svResTitle').className=ok?'c-ok':'c-bad';
+    $('svResBody').innerHTML=ok
+      ? 'Every axis is within tolerance — the alignment is complete. You can '
+        +'still accept this survey below to generate a further round of '
+        +'correction steps if you want to refine it more.'
+      : `Still out of tolerance — peak ${Math.round(a.peak_frac*100)}% of tolerance. `
+        +'This loops back to Solve for another round of correction steps.';
+    $('svResModal').classList.remove('hidden');
+  }
+});
+$('svResOk').addEventListener('click',()=>$('svResModal').classList.add('hidden'));
+$('btnAcceptPlan').addEventListener('click',async()=>{
+  const btn=$('btnAcceptPlan'); btn.disabled=true; const was=btn.textContent;
+  btn.textContent='Generating…';
+  try{
+    const r=await API.post('/api/plan/accept',{});
+    if(r.ok===false){alert(r.error);return;}
+    SESS=r.session; render();
+    // The required-correction view was for reviewing the survey; once the
+    // plan is accepted and moves start, showing it stale is more confusing
+    // than helpful — always collapse it back rather than leave whatever
+    // state the operator had it in.
+    if(typeof setViz==='function')setViz('off'); else drawViz();
+    $('cardMove').scrollIntoView({behavior:'smooth',block:'start'});
+  } finally {btn.disabled=false; btn.textContent=was;}
 });
 $('btnUndoSurvey').addEventListener('click',async()=>{
   if(!confirm('Discard the last survey and load a different file?\n\n'
@@ -655,6 +758,8 @@ async function refreshTemp(){
 function renderSurvey(s){
   $('sN').textContent=`${s.fit.n} / ${s.n_uploaded}`;
   $('sFile').textContent=s.filename||'—';
+  $('sCommentRow').classList.toggle('hidden',!s.comment);
+  if(s.comment)$('sComment').textContent=s.comment;
   $('btnUndoSurvey').classList.remove('hidden');
   $('sRms').textContent=s.fit.rms.toFixed(4)+' mm';
   $('sMax').textContent=s.fit.max.toFixed(4)+' mm';
@@ -674,28 +779,47 @@ function render(){
   $('sessChip').className='chip '+(SESS.status==='complete'?'ok':(SESS.status==='stopped'?'bad':'idle'));
 
   const steps=SESS.steps||[],done=SESS.step_index;
+  const verifySt=SESS.status==='complete'?'done':(SESS.phase==='verify'?'active':'');
   $('stepper').innerHTML=['Survey','Solve'].map((l,i)=>{
     const st=SESS.iteration>0?'done':(i===0?'active':'');
     return `<div class="step ${st}"><div class="dot">${st==='done'?'✓':i+1}</div><div class="lbl">${l}</div><div class="bar"></div></div>`;
   }).join('')+steps.map((s,i)=>{
     const cls=i<done?'done':(i===done&&SESS.phase==='moving'?'active':'');
-    return `<div class="step ${cls}"><div class="dot">${i<done?'✓':i+3}</div><div class="lbl">${esc(s.title.split('—')[0].trim())}</div>${i<steps.length-1?'<div class="bar"></div>':''}</div>`;
-  }).join('');
+    return `<div class="step ${cls}"><div class="dot">${i<done?'✓':i+3}</div><div class="lbl">${esc(s.title.split('—')[0].trim())}</div><div class="bar"></div></div>`;
+  }).join('')+`<div class="step ${verifySt}"><div class="dot">${verifySt==='done'?'✓':steps.length+3}</div><div class="lbl">Confirm</div></div>`;
+
+  // A survey came back out of spec and we're solving/moving again - make
+  // the loop-back concrete rather than a standing "this can happen" note.
+  const looping=SESS.iteration>1&&(SESS.phase==='solved'||SESS.phase==='moving');
+  $('loopNote').className='note'+(looping?' banner warn':'');
+  $('loopText').textContent=looping
+    ? 'Looping back to Solve — the last confirmation survey was still out of spec.'
+    : 'Confirm loops back to Solve if the survey is still out of spec.';
 
   const a=SESS.assessment;
   $('dofList').innerHTML=(INFO.axes||[]).map(ax=>{
     const d=a?a.axes[ax.key]:null;
     const tol=(SESS.tol||{})[ax.key]??ax.default_tol;
     const span=1.6*tol,v=d?d.value:null;
-    const pos=v===null?0:Math.max(-1,Math.min(1,v/span)),left=50+pos*50;
+    // Bar position is relative to the axis's own TARGET (e.g. the heave
+    // pre-set), not to raw zero - an axis can be deliberately non-zero at
+    // "on target" (see compute_plan's heave_bias_mm) and the bar must show
+    // that as centred, not as an apparent error.
+    const tgt=d?(d.target||0):0, resid=v===null?null:v-tgt;
+    const pos=resid===null?0:Math.max(-1,Math.min(1,resid/span)),left=50+pos*50;
     const zw=(tol/span)*50,st=d?d.status:'idle';
     return `<div class="dof"><div class="nm">${ax.label}<i>${ax.unit}</i></div>
       <div class="meter"><div class="z" style="left:${50-zw}%;width:${zw*2}%"></div><div class="d"></div>
-      <div class="m bg-${st}" style="left:${left}%;${v===null?'opacity:.3':''}"></div></div>
-      <div class="val c-${st}">${v===null?'—':fmt(v,ax.unit==='mrad'?3:2)}
-      <i>${d?Math.round(d.frac*100)+'% of ±'+tol:'±'+tol}</i></div></div>`;}).join('');
+      <div class="m bg-${st}" style="left:${left}%;${resid===null?'opacity:.3':''}"></div></div>
+      <div class="val c-${st}">${resid===null?'—':fmt(resid,ax.unit==='mrad'?3:2)}
+      <i>${d?Math.round(d.frac*100)+'% of ±'+tol:'±'+tol}${tgt?' · target '+fmt(tgt,2):''}</i></div></div>`;}).join('');
   if(a){const c=$('poseChip');c.className='chip '+(a.in_tolerance?'ok':'bad');
     c.textContent=a.in_tolerance?'All axes in tolerance':`peak ${Math.round(a.peak_frac*100)}% of tol`;}
+  // "Accept" only while awaiting confirmation to generate the plan; the
+  // pose error stays hidden during an active move so the technician's
+  // attention is on the step boxes, not a stale snapshot from the survey.
+  $('acceptBox').classList.toggle('hidden',SESS.phase!=='solved');
+  $('verifyNote').classList.toggle('hidden',SESS.phase!=='verify');
 
   const step=SESS.step,moving=SESS.phase==='moving'&&step;
   $('cardMove').classList.toggle('hidden',!moving);
@@ -713,7 +837,16 @@ function render(){
   const ended=SESS.status!=='active';
   $('btnNew').classList.toggle('hidden',!ended);
   $('btnStop').classList.toggle('hidden',ended);
-  $('cardSurvey').classList.toggle('hidden',ended);
+  // Survey + pose error stay out of the way ONLY during an active move
+  // (targets are what matters then). They come back once the moves are done
+  // — to prompt a confirmation survey, or (once complete) to show the final
+  // result and still let the operator reload if they picked the wrong file —
+  // and before one's been accepted yet. Deliberately NOT tied to "ended":
+  // hiding them there would make a wrong final survey unrecoverable without
+  // starting over.
+  const surveyHidden=SESS.phase==='moving';
+  $('cardSurvey').classList.toggle('hidden',surveyHidden);
+  $('cardPose').classList.toggle('hidden',surveyHidden);
   const n=$('endedNote');
   if(ended){
     n.className='banner '+(SESS.status==='complete'?'ok':'warn');
@@ -722,8 +855,16 @@ function render(){
       : `Session stopped for ${SESS.serial}. You can still generate a partial report, then start the next girder.`;
     n.classList.remove('hidden');
     if(POLL){clearInterval(POLL);POLL=null;}
-  if(TEMPPOLL){clearInterval(TEMPPOLL);TEMPPOLL=null;}
-  } else n.classList.add('hidden');
+    if(TEMPPOLL){clearInterval(TEMPPOLL);TEMPPOLL=null;}
+  } else {
+    n.classList.add('hidden');
+    // A session that went "ended" (e.g. looked complete) and then genuinely
+    // became active again - a loop-back survey coming back out of spec, or
+    // an undone survey - must get its poll loop back, or every step from
+    // here on renders with no live encoder data at all: nothing else ever
+    // calls renderLive again once this stops.
+    if(!POLL)startPoll();
+  }
 }
 
 let TEMPPOLL=null;
@@ -759,6 +900,16 @@ async function tick(){
 // step opens, so the bar shows how much of THIS move is done rather than an
 // absolute position that would mean nothing to the technician.
 const MOVE_START={};
+// Previous poll's RAW reading per encoder, to catch "moving away from
+// target" between polls. Deliberately NOT a comparison of |error|: |error|
+// can grow on a poll where the encoder overshot PAST the target while still
+// moving consistently towards it the whole time (crossing zero error flips
+// its sign but not the direction of travel) - that must not read as wrong
+// way. What actually means "wrong way" is the STEP taken pointing away from
+// where the target was, which is what this compares instead.
+// Keyed by step so it resets cleanly on any step change (including step-back).
+const PREV_REL={};
+const WRONG_WAY_EPS=0.0006; // mm - above encoder resolution, below real jitter
 function progressBar(rel,tgt,ok){
   if(rel==null)return '<div class="prog"><div class="track"></div><div class="lbl"><span>no reading</span></div></div>';
   const key=SESS.id+':'+SESS.step_index+':'+tgt.toFixed(6);
@@ -789,24 +940,59 @@ function renderLive(r){
     // Down, not stale: an encoder whose timestamp is old is simply a girder
     // that is not moving. One with no value at all cannot be adjusted against.
     const down=rel==null,ok=!!p.ok;
-    const cls=down?'down':(ok?'on':'off');
-    let dirn,dcls;
+    const staleAfter=(INFO&&INFO.stale_after_s!=null)?INFO.stale_after_s:5;
+    const stale=!down&&rd.age!=null&&rd.age>staleAfter;
+    let dirn,dcls,turnsRow='';
     if(down){dirn='NOT CONNECTED — DO NOT ADJUST';dcls='down';}
-    else if(ok){dirn='ON TARGET';dcls='done';}
+    else if(ok){dirn=`✓ IN TOLERANCE — ${fmt(err,4)} mm from target`;dcls='done';}
     else{const need=-err;
+      // Encoder convention: -Y (girder moving down) reads as +count, so a
+      // positive `need` (count must increase) means LOWER, not raise.
+      // Sway: +count = +X = outboard, so a positive `need` there means
+      // Move O/B, not a bare "+". Surge: +Z (downstream) = +count on US
+      // but -count on DS (DS is INVERTED per the rig-wide convention), so
+      // the same positive `need` means Move D/S on US and Move U/S on DS.
       dirn=step.kind==='horizontal'
-        ? `${need>0?'▶ MOVE +':'◀ MOVE −'} ${Math.abs(need).toFixed(3)} mm`
-        : `${need>0?'▲ RAISE':'▼ LOWER'} ${Math.abs(need).toFixed(3)} mm`;
-      dcls='go';}
+        ? (eid.startsWith('SWAY')
+            ? `${need>0?'▶ MOVE O/B':'◀ MOVE I/B'} ${Math.abs(need).toFixed(3)} mm`
+            : (eid==='SURGE_DS'
+                ? `${need>0?'◀ MOVE U/S':'▶ MOVE D/S'} ${Math.abs(need).toFixed(3)} mm`
+                : `${need>0?'▶ MOVE D/S':'◀ MOVE U/S'} ${Math.abs(need).toFixed(3)} mm`))
+        : `${need>0?'▼ LOWER':'▲ RAISE'} ${Math.abs(need).toFixed(3)} mm`;
+      dcls='go';
+      // Adjuster-screw turn estimate. Sway/surge ratios are TBC on the rig,
+      // so INFO carries null for them and the row is simply omitted.
+      const ratio=eid.startsWith('SWAY')?INFO.mm_per_turn_sway
+        :eid.startsWith('SURGE')?INFO.mm_per_turn_surge
+        :INFO.mm_per_turn_vertical;
+      if(ratio){
+        const turns=Math.abs(need)/ratio;
+        turnsRow=`<div class="row"><span>≈ turns</span><b>${turns.toFixed(1)}</b></div>`;
+      }
+      // Wrong-way check: did the STEP since the last poll point away from
+      // where the target was, not just "did |error| grow" - that alone
+      // false-flags a clean overshoot (crossing the target while still
+      // moving consistently towards it flips error's sign, not the actual
+      // direction of travel).
+      const pkey=SESS.id+':'+SESS.step_index+':'+eid+':'+tgt.toFixed(6);
+      const prevRel=PREV_REL[pkey];
+      if(prevRel!==undefined){
+        const moved=rel-prevRel, needed=tgt-prevRel;
+        if(Math.abs(moved)>WRONG_WAY_EPS&&Math.abs(needed)>WRONG_WAY_EPS
+           &&Math.sign(moved)!==Math.sign(needed)){
+          dirn='⚠ WRONG WAY — '+dirn;dcls='wrong';}
+      }
+      PREV_REL[pkey]=rel;}
+    const cls=down?'down':(dcls==='wrong'?'wrong':(ok?'on':'off'));
     const fin=step.final_targets?step.final_targets[eid]:null;
     return `<div class="act ${cls}">
       <div class="id">${eid}</div>
       <div class="big ${down?'c-bad':(ok?'c-ok':'')}">${rel==null?'—':fmt(rel,3)}</div>
       <div class="row"><span>target</span><b>${fmt(tgt,3)}</b></div>
-      <div class="row"><span>error</span><b class="${ok?'c-ok':'c-warn'}">${fmt(err,4)}</b></div>
       <div class="row"><span>absolute</span><b>${rd.absolute==null?'—':fmt(rd.absolute,3)}</b></div>
       ${(fin!=null&&Math.abs(fin-tgt)>1e-6)?`<div class="row"><span>settles to</span><b class="c-idle">${fmt(fin,3)}</b></div>`:''}
-      <div class="row"><span>age</span><b class="c-idle">${rd.age==null?'—':rd.age.toFixed(1)+'s'}</b></div>
+      ${stale?`<div class="row"><span>reading</span><b class="c-warn">stale — ${rd.age.toFixed(1)}s old</b></div>`:''}
+      ${turnsRow}
       ${progressBar(rd.relative,tgt,ok)}
       <div class="dirn ${dcls}">${dirn}</div></div>`;}).join('');
 
@@ -845,46 +1031,51 @@ function renderLive(r){
   if(r.datum_group){dc.className='chip ok';dc.textContent='datum: '+r.datum_group;}
   else{dc.className='chip idle';dc.textContent='datum —';}
 }
-$('btnZero').addEventListener('click',async()=>{
-  const ok=confirm(
-    'Zero the encoders?\n\n'
-    +'This writes a new zero offset into the IOC for all eight encoders '
-    +'(sets each _SP to 0, then processes _ZCALC.PROC). Autosave makes it '
-    +'permanent, and everything else reading these PVs sees the change.\n\n'
-    +'It CANNOT be undone from this tool.\n\n'
-    +'Any progress on the current step is discarded: the move datum is re-taken '
-    +'from the new readings, so the step restarts from zero.\n\n'
-    +'The girder itself does not move.');
-  if(!ok)return;
-  const btn=$('btnZero'); btn.disabled=true; const was=btn.textContent;
-  btn.textContent='Zeroing…';
-  try{
-    const r=await API.post('/api/encoders/zero',{confirm:true,operator:(SESS&&SESS.operator)||''});
-    if(r.ok===false){alert('Zeroing failed:\n\n'+r.error);}
-  }catch(e){alert('Zeroing failed: '+e);}
-  finally{btn.disabled=false; btn.textContent=was; tick();}
-});
 $('btnDrive').addEventListener('click',async()=>{await API.post('/api/demo/drive',{fraction:1.0});});
+$('btnDriveWrong').addEventListener('click',async()=>{
+  // Demo/test aid only: drive away from target for a few seconds (so the
+  // per-poll error grows and the wrong-way flag should trip), then correct
+  // normally - proves the wrong-way detection actually catches it.
+  const btn=$('btnDriveWrong'); btn.disabled=true; const was=btn.textContent;
+  btn.textContent='Driving the wrong way…';
+  await API.post('/api/demo/drive',{fraction:-0.4});
+  setTimeout(async()=>{
+    await API.post('/api/demo/drive',{fraction:1.0});
+    btn.disabled=false; btn.textContent=was;
+  },3000);
+});
 $('btnDone').addEventListener('click',async()=>{
-  const r=await API.post('/api/step/complete',{});
-  if(r.ok===false){alert(r.error);return;}
-  if(!r.accepted){
-    $('ovBody').innerHTML=(r.check.reasons||[]).map(x=>'• '+esc(x)).join('<br>')
-      +'<br><br>Overrides are recorded on the report with your name and reason.';
-    $('ovModal').classList.remove('hidden');return;}
-  SESS=r.session;render();
+  const step=SESS&&SESS.step;
+  const label=step?step.title||step.id:'this step';
+  if(!confirm(`Confirm "${label}" is complete and move to the next step?`))return;
+  const btn=$('btnDone'); btn.disabled=true; const was=btn.textContent;
+  btn.textContent='Completing…';
+  try{
+    const comment=$('fStepNote').value.trim();
+    const r=await API.post('/api/step/complete',comment?{comment}:{});
+    if(r.ok===false){alert(r.error);return;}
+    if(!r.accepted){
+      $('ovBody').innerHTML=(r.check.reasons||[]).map(x=>'• '+esc(x)).join('<br>')
+        +'<br><br>Overrides are recorded on the report with your name and reason.';
+      $('ovModal').classList.remove('hidden');return;}
+    $('fStepNote').value='';
+    SESS=r.session;render();
+    $('cardMove').scrollIntoView({behavior:'smooth',block:'start'});
+  } finally {btn.disabled=false; btn.textContent=was;}
 });
 $('ovCancel').addEventListener('click',()=>$('ovModal').classList.add('hidden'));
 $('ovConfirm').addEventListener('click',async()=>{
   const reason=$('ovReason').value.trim();
   if(!reason){alert('A reason is required to override.');return;}
-  const r=await API.post('/api/step/complete',{override:true,reason,operator:SESS.operator});
+  const comment=$('fStepNote').value.trim();
+  const r=await API.post('/api/step/complete',{override:true,reason,operator:SESS.operator,comment});
   $('ovModal').classList.add('hidden');$('ovReason').value='';
-  if(r.ok!==false){SESS=r.session;render();}
+  if(r.ok!==false){$('fStepNote').value='';SESS=r.session;render();}
 });
 $('btnBack').addEventListener('click',async()=>{
   if(!confirm('Re-open the previous step?\n\nThe girder has already moved, so this is NOT an undo. '
-    +'Targets come from the existing plan — if the pose has drifted, abandon the iteration and re-survey instead.'))return;
+    +'Targets are recomputed from the current encoder readings, not replayed from before — if the pose '
+    +'has drifted more than a live reading can capture, abandon the iteration and re-survey instead.'))return;
   const r=await API.post('/api/step/back',{});
   if(r.ok){SESS=r.session;render();}
 });
@@ -922,7 +1113,7 @@ function backToSetup(){
   // clear the previous girder so nothing is carried over by accident;
   // keep the operator name, since it is usually the same person.
   $('fSerial').value=''; $('fType').value=''; $('fFile').value=''; $('fTemp').value='';
-  $('fNotes').value='';
+  $('fNotes').value=''; $('fComment').value=''; $('fStepNote').value='';
   $('serialNote').textContent='Type resolves from the lookup table.';
   ['rSerial','rType','rIter'].forEach(id=>$(id).textContent='—');
   ['sN','sRms','sMax','sRev'].forEach(id=>$(id).textContent='—');
@@ -933,6 +1124,14 @@ function backToSetup(){
   $('endedNote').classList.add('hidden');
   $('surveyWarn').classList.add('hidden'); $('setupErr').classList.add('hidden');
   $('cardMove').classList.add('hidden'); $('cardSurvey').classList.remove('hidden');
+  $('cardPose').classList.remove('hidden');
+  $('acceptBox').classList.add('hidden'); $('verifyNote').classList.add('hidden');
+  // Default back to "bare" every time - carrying "loaded" forward by
+  // accident onto the next (possibly actually-bare) girder would silently
+  // drop its heave pre-set.
+  OPTS.loaded=0;
+  document.querySelectorAll('#segLoaded button').forEach(b=>b.setAttribute('aria-pressed',b.dataset.l==='0'));
+  updateLoadedNote();
   $('fSerial').focus();
 }
 
@@ -963,15 +1162,16 @@ function showReport(name,msg,servable){
 // identically. Geometry and the solved pose come from the server; the browser
 // only draws — it never recomputes any of the alignment maths.
 let VIZ='off';
-document.querySelectorAll('#segViz button').forEach(b=>b.addEventListener('click',()=>{
-  VIZ=b.dataset.v;
-  document.querySelectorAll('#segViz button').forEach(x=>x.setAttribute('aria-pressed',x===b));
+function setViz(mode){
+  VIZ=mode;
+  document.querySelectorAll('#segViz button').forEach(x=>x.setAttribute('aria-pressed',x.dataset.v===mode));
   $('vizBody').classList.toggle('hidden',VIZ==='off');
   $('vizPlan').classList.toggle('hidden',VIZ!=='plan');
   $('viz3d').classList.toggle('hidden',VIZ!=='3d');
   $('vizChip').textContent=VIZ==='off'?'optional':(VIZ==='3d'?'3D model':'plan + end');
   drawViz();
-}));
+}
+document.querySelectorAll('#segViz button').forEach(b=>b.addEventListener('click',()=>setViz(b.dataset.v)));
 
 const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
 const sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
@@ -1001,10 +1201,14 @@ function loadGeom(){
 // correction still required at a point, from the server's fitted pose error
 function corrAt(p){
   const e=SESS&&SESS.current_err; if(!e)return null;
+  // heave can have a deliberate non-zero target (the heave pre-set, see
+  // compute_plan's heave_bias_mm) - sitting exactly on it is zero correction,
+  // not e.heave's worth.
+  const heaveErr=e.heave-((SESS.heave_bias_mm)||0);
   const t=[0,0,0],th=[0,0,0];
   const a=(v,s)=>{t[0]+=v[0]*s;t[1]+=v[1]*s;t[2]+=v[2]*s;};
   const r=(v,s)=>{th[0]+=v[0]*s;th[1]+=v[1]*s;th[2]+=v[2]*s;};
-  a(jackX,-e.sway); a(jackY,-e.heave); a(jackZ,-e.surge);
+  a(jackX,-e.sway); a(jackY,-heaveErr); a(jackZ,-e.surge);
   r(jackZ,-e.roll/1000); r(jackX,-e.pitch/1000); r(jackY,-e.yaw/1000);
   const d=sub(p,p0);
   return [t[0]+(th[1]*d[2]-th[2]*d[1]), t[1]+(th[2]*d[0]-th[0]*d[2]), t[2]+(th[0]*d[1]-th[1]*d[0])];

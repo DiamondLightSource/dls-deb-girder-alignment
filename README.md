@@ -29,9 +29,11 @@ uv run dls-deb-girder-alignment serve --demo --config example/config/config.yaml
 
 Open <http://localhost:8080/> and:
 
-1. Serial `DLS0011116`, any operator name, turn **Combined vertical** on, **Start session**.
+1. Serial `DLS0011116`, any operator name, **Start session** (Combined vertical
+   is on by default).
 2. Load `example/surveys/ms_DLS0011116_initial.csv`. The fit comes back at about
-   0.02 mm RMS with every axis out of tolerance, and a four-step plan appears.
+   0.02 mm RMS with every axis out of tolerance — review the pose error, then
+   **Accept survey — generate correction steps** to build the four-step plan.
 3. For each step: **Simulate move**, wait for the gate to go green, then
    **Confirm step complete**.
 4. Load `example/surveys/ms_DLS0011116_as_left.csv`. Every axis is now in
@@ -102,6 +104,24 @@ content the database holds — so this covers only the sessions that never
 produced a report: abandoned partway, or open when the volume is lost. It is
 pulled as JSON rather than by copying `sessions.sqlite`, because a file copy
 taken while the service is writing can be torn.
+
+`scripts/calibrate.py` is the same kind of standalone, stdlib-only script,
+for a different job: it pools `model_check` (predicted-vs-achieved pose
+change) across many stored sessions and looks for a systematic slope away
+from 1.0, per girder type and axis — including `warp`, where a persistent
+slope is exactly the signal that `_fea_data.FEA_COMPLIANCE`'s stored
+compliance gain should be rescaled. It reads whatever `sessions export`
+already produces, so the two pair naturally:
+
+```bash
+uv run dls-deb-girder-alignment sessions export --out export.json
+scripts/calibrate.py export.json
+```
+
+It only ever *suggests* — nothing it finds is applied automatically, and a
+slope with too few samples or too weak a correlation is flagged rather than
+acted on. See the script's own header for the full methodology and its
+limits (it finds a uniform per-type scale correction, not a per-point one).
 
 ### Containerised report mirror
 
@@ -324,8 +344,9 @@ generation and a single authoritative maths implementation all follow.
 is a view. Do not re-implement the numerics in JavaScript — two copies will
 drift, and a silent numerical discrepancy in this domain is expensive.
 
-**The tool never commands motion.** Adjustment stays manual. There is exactly one
-write path — *Zero encoders* — and it is confirmed by the operator first.
+**The tool never commands motion, and has no write path at all.** Adjustment
+stays manual and the tool only observes. Encoder zeroing (setting a hardware
+datum in the IOC) is done directly in EPICS, outside this tool.
 
 ### The survey
 
@@ -368,12 +389,11 @@ invents a surge/yaw coupling that does not exist.
 
 Worth understanding before changing anything in `session.py`.
 
-**The hardware datum lives in the IOC.** *Zero encoders* in the move card sets
-each `…:X_SP` to zero and processes `…:X_ZCALC.PROC`; the IOC computes the offset
-and autosave persists it. The suffixes are configurable. This is not undoable
-from the tool and everything else reading those PVs sees the change, so the
-button confirms first, the action goes into the audit trail with the operator's
-name, and a partial failure is reported per encoder rather than swallowed.
+**The hardware datum lives in the IOC.** Zeroing an encoder — setting `…:X_SP`
+to zero and processing `…:X_ZCALC.PROC`, so the IOC computes an offset that
+autosave persists — is done directly in EPICS, outside this tool. This tool
+only observes the result: a plan datum captured before an external zero is
+meaningless, since the absolute readings have just moved (see below).
 
 **The plan datum lives in the session.** Step targets are encoder *deltas* from
 the pose that was surveyed, so a reading only means something measured from the
@@ -384,8 +404,48 @@ gate compares against the wrong thing.
 
 The plan datum is captured **automatically** on entering a group and is part of
 the persisted session, so a restart mid-move resumes against the same reference
-rather than silently changing it. Zeroing the hardware drops it, since the
-absolute readings have just moved.
+rather than silently changing it.
+
+> **Zeroing an encoder externally, mid-move, leaves a stale datum.** Because
+> zeroing happens outside this tool now, the tool has no way to know it
+> happened and will not drop the datum on its own — unlike a move or a new
+> survey, nothing here currently re-takes it automatically. If an encoder is
+> zeroed while a move is in progress, re-open the current step (or start a
+> fresh survey) before continuing, so the datum is re-taken against the new
+> absolute readings.
+
+### Heave pre-set (one shared value, all four types)
+
+This tool normally aligns the **bare** girder, under its own weight, before
+any magnets are mounted. Magnets are then mounted afterwards and aligned
+individually, to nominal, **after** the girder is fully loaded — so a
+magnet's own fine adjuster, not this tool, is what brings it onto the beam
+trajectory. Between bare and fully-loaded the girder sags under the magnets'
+weight (`_fea_data.SAG_BIAS_MM`): in MS's FEA run, ~-0.535 mm at the centre,
+~+0.056 mm at the D/S end. That sag doesn't change where any magnet ends up
+— but it does change how much travel each magnet's adjuster has to use, and
+a bigger ask is a bigger chance of running out of range on the worst-placed
+magnet.
+
+So the bare-girder target is deliberately offset **above** true nominal by a
+constant (`Machine.sag_bias_mm` — the exact minimax split of the sag
+extremes above, which equalises the worst-case magnet correction at both the
+centre and the ends rather than leaving it all at the centre). **+0.24 mm,
+from MS's bare-vs-loaded FEA run, is applied to all four girder types** —
+LM had its own run too (+0.113 mm) but that per-type approach was dropped in
+favour of this single shared value (2026-10-12).
+
+Since the bias only makes sense while the girder is still bare, **the
+"Start alignment session" form has a Girder state toggle** — *Bare girder*
+(default) or *Loaded with magnets*. Bare uses the pre-set exactly as
+above; Loaded sends `heave_bias_mm: 0.0` explicitly, so a girder that has
+already sagged under its real magnet load isn't pre-set on top of that
+real sag. It defaults on for a bare girder, folded into the same "heave" or
+"combined" step that already sets heave — nothing extra for the technician
+to do beyond that one toggle — and is recorded on every survey so it's
+never mistaken for a mis-alignment. `compute_plan`'s `heave_bias_mm` and
+`Session`'s constructor both accept an explicit override too, for any other
+case the toggle doesn't cover.
 
 ### Safety behaviours
 
@@ -393,21 +453,74 @@ absolute readings have just moved.
   combinations exist that a *rigid* girder cannot produce. They are named WARP
   (vertical twist) and STRETCH (differential surge), and they are the left null
   space of the Jacobian. Warn at 0.003 mm, stop at 0.005 mm. The gate tests them
-  too: on target with WARP out of limit is not a step to wave through.
+  too: on target with WARP out of limit is not a step to wave through — but it
+  gates on the STEP'S OWN expected parasitic content, not on zero, since a
+  warp-corrected heave move (below) or even an ordinary intermediate pair-move
+  deliberately/genuinely has some.
+- **Warp correction (all four types).** The four vertical jacks give exactly
+  three rigid DOF (heave, pitch, roll); the fourth jack combination — the
+  diagonal checkerboard, geometrically the same null space as WARP above — is
+  not rigid. Preliminary single-jack FEA shows the girder genuinely bends in
+  that mode (`_fea_data.py`, ~0.7-1.0 mm of real shape change at the survey
+  points per mm of checkerboard jack command). MS and LM were each run through
+  their own FEA sweep; SM reuses MS's numbers and ML reuses LM's, since each
+  pair shares an identical jack/vencoder/fiducial layout in the jack frame
+  (only the frame's own offset into the master frame differs, which this tool
+  already accounts for elsewhere). `fit_pose` fits this as a 7th parameter
+  (6 rigid DOF + warp amplitude) whenever a girder type has FEA data for enough
+  matched fiducials, and the correction defaults ON, folded into whichever
+  vertical step actually sets heave — "Heave" alone or "Vertical (flatten +
+  heave)" when combined — never "Flatten" alone. Horizontal (surge/sway)
+  actuation has negligible effect on this mode and is not modelled; STRETCH is
+  corrected via the surge adjusters, unaffected by this. A girder type absent
+  from `FEA_COMPLIANCE` (none currently) would behave exactly as before —
+  `err["warp"]` unmodelled (0.0), not assumed zero.
 - **Connection, not freshness.** Every reading carries the age of its
-  timestamp, and that age is reported but never judged. These encoder records
-  only process when the PLC value changes, so a girder that has stopped moving
-  carries an old timestamp on all eight — age-based staleness flagged the
-  normal case as a fault, and blocked the gate exactly when the step had been
-  completed. What is checked is connection: a PV that is not connected has no
-  value, the reading shows NOT CONNECTED and the gate will not pass.
+  timestamp, but the gate never judges it. These encoder records only process
+  when the PLC value changes, so a girder that has stopped moving carries an
+  old timestamp on all eight — age-based staleness flagged the normal case as
+  a fault, and blocked the gate exactly when the step had been completed. What
+  is checked is connection: a PV that is not connected has no value, the
+  reading shows NOT CONNECTED and the gate will not pass. The UI stays quiet
+  about age too, up to a point — past `gate.stale_after_s` (default 5 s) it
+  shows a "stale" note, purely informational, so a technician isn't left
+  wondering whether a long-unmoving reading is still live.
+- **Direction wording matches the physical adjuster, not the raw sign.**
+  Vertical encoders read `-Y girder motion = +count`, so a target that needs
+  the count to increase means the girder must go DOWN — the UI shows LOWER,
+  not RAISE, for that case (and vice versa). Sway reads `+X = +count = 
+  outboard`, so the UI shows "Move O/B" / "Move I/B" instead of a bare sign;
+  surge is left as a plain +/- figure. Where a turn ratio is configured
+  (`adjusters.mm_per_turn_vertical`, default 0.227 mm/turn; sway/surge are
+  `adjusters.mm_per_turn_sway` / `mm_per_turn_surge`, unset by default since
+  those ratios are not yet characterised) each active encoder also shows an
+  estimated turn count alongside the mm figure.
 - **Stage encoders are monitored during vertical moves.** They should barely
   move; if they do, the girder is riding a spherical bearing.
 - **Expected values** are shown for monitored encoders, so "moved as expected
   because the girder tilted" is distinguishable from "moved unexpectedly".
+- **A plan requires explicit confirmation.** A fit out of tolerance pauses in
+  a "solved" phase — the pose error is shown, but no targets exist yet — until
+  the operator presses *Accept survey — generate correction steps*. The survey
+  and pose-error boxes then get out of the way for the move steps, and come
+  back once every step is done (phase "verify") to prompt a confirmation
+  survey; if that's still out of tolerance, it loops back to "solved" for
+  another round rather than looping silently.
 - **Step back is not undo.** The UI can rewind; the steel cannot. Re-opening a
-  step never replays superseded targets. If the pose has drifted, *Abandon iteration*
-  and re-survey — that is the honest recovery.
+  step recomputes its targets from the live pose — pushing live encoder
+  deltas through the Jacobian, same mechanism as the model-validation check —
+  rather than replaying the stale numbers from before any physical move. That
+  estimate also accounts for whatever was already achieved in an *earlier,
+  different* move group, whose own datum is superseded by the time you're
+  back looking at it — but deliberately NOT for the group you're still
+  *inside*: every group's own plan is a uniform, no-differential move (heave
+  is a pure Y shift, never a shift-plus-tilt), so if only one of its two
+  pair-moves is done the girder is genuinely asymmetric, and no single value
+  fed into that uniform formula reproduces it correctly — the already-good
+  pair's target would come out wrong. Left alone instead, it reproduces the
+  same, still-correct plan for that group. If the pose has drifted more than
+  a live reading can capture, *Abandon iteration* and re-survey — that is the
+  honest recovery.
 - **Overrides are recorded** with the operator's name and reason, and appear in
   the report.
 
@@ -424,11 +537,18 @@ in the jack frame, never hand-labelled.
 
 ```bash
 uv sync
-uv run pytest                    # 94 tests
+uv run pytest                    # 155 tests
 uv run ruff check src tests
 uv run pyright src tests
 uv run tox -p                    # everything CI runs
 ```
+
+`cothread` (and `epicscorelibs`, which it uses for `libca`) ship no Windows or
+macOS wheels, so `uv sync` skips both there and the suite runs against the
+simulator only — `tests/test_threading.py`, which exercises the real
+`CothreadBackend`, is skipped rather than failing. `serve` and `check` without
+`--demo` still need Channel Access and so still need Linux; everything else,
+including the full `--demo` walkthrough above, works as-is.
 
 ```
 src/dls_deb_girder_alignment/

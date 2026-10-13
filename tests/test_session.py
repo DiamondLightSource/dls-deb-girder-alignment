@@ -31,13 +31,44 @@ def _readings(values: dict[str, float]) -> dict[str, dict]:
 def session(survey_for) -> Session:
     s = Session(serial="DLS0011116", gtype="MS", operator="tester", bay="1")
     s.add_survey(survey_for(G.machine("MS"), {"roll": 0.5, "heave": 0.4, "sway": 0.3}))
+    s.accept_plan()  # phase pauses at "solved" until the operator confirms
     return s
 
 
-def test_survey_starts_a_plan(session: Session):
-    assert session.phase == "moving"
-    assert session.plan is not None
-    assert _step(session)["group"] == "flatten"
+def test_survey_pauses_for_accept_before_building_a_plan(survey_for):
+    """A fit out of tolerance must not silently start commanding targets —
+    the operator sees the pose error and confirms before any plan exists.
+    """
+    s = Session(serial="DLS0011116", gtype="MS", operator="tester", bay="1")
+    s.add_survey(survey_for(G.machine("MS"), {"roll": 0.5, "heave": 0.4, "sway": 0.3}))
+    assert s.phase == "solved"
+    assert s.plan is None
+    assert s.current_step() is None
+
+    s.accept_plan()
+    assert s.phase == "moving"
+    assert s.plan is not None
+    assert _step(s)["group"] == "combined"  # combine_vertical defaults on
+
+
+def test_accept_plan_refuses_outside_the_solved_phase(survey_for):
+    s = Session(serial="DLS0011116", gtype="MS", operator="tester", bay="1")
+    with pytest.raises(RuntimeError):
+        s.accept_plan()  # await_survey - nothing to accept yet
+
+    # On the session's own target (heave pre-set included) the survey is
+    # converged (status "complete"), but phase stays "solved" either way -
+    # the operator can still choose to accept and refine further even
+    # though nothing forces them to.
+    err = {"heave": s.heave_bias_mm} if s.heave_bias_mm else {}
+    s.add_survey(survey_for(G.machine("MS"), err))
+    assert s.phase == "solved"
+    assert s.status == "complete"
+    s.accept_plan()
+    assert s.phase == "moving"
+    assert s.status == "active"  # building a plan reopens a "complete" session
+    with pytest.raises(RuntimeError):
+        s.accept_plan()  # already moving, not "solved" any more
 
 
 def test_datum_is_needed_once_per_group(session: Session):
@@ -122,6 +153,85 @@ def test_gate_rejects_a_parasitic_excursion(session: Session):
     assert not chk["parasitic_ok"]
 
 
+def test_complete_step_records_an_optional_comment(session: Session):
+    step = _step(session)
+    session.complete_step(_readings(step["expected"]), comment="  looked fine  ")
+    assert session.moves[-1]["comment"] == "looked fine"
+
+
+def test_complete_step_comment_defaults_to_empty(session: Session):
+    step = _step(session)
+    session.complete_step(_readings(step["expected"]))
+    assert session.moves[-1]["comment"] == ""
+    assert session.moves[-1]["reopened"] is False
+
+
+def test_step_back_flags_the_reopened_step_as_such(session: Session):
+    """A step already confirmed complete, then stepped back into, must be
+    flagged on its move record - the report highlights this so a technician
+    reading it later doesn't mistake the earlier (superseded) entry for the
+    final outcome of that step.
+    """
+    step0 = _step(session)
+    session.complete_step(_readings(step0["expected"]))
+    assert session.moves[-1]["reopened"] is False
+
+    step1 = _step(session)
+    session.complete_step(_readings(step1["expected"]))
+    assert session.moves[-1]["reopened"] is False
+
+    res = session.step_back()
+    assert res["ok"]
+    # The move for the step we just stepped back INTO (step1) is now flagged
+    # - step0's move, further back, is untouched.
+    assert session.moves[0]["reopened"] is False
+    assert session.moves[1]["reopened"] is True
+
+
+def test_model_validation_accumulates_every_step_since_the_last_survey(
+    session: Session, survey_for
+):
+    """The predicted-vs-achieved model check must sum EVERY step completed
+    since the previous survey, not just the last one.
+
+    The session fixture starts with heave off by 0.4mm, corrected by the
+    "combined" group's two vertical pairs (steps 1-2 of 4); the round's
+    LAST step is "surge" (step 4), which predicts ~0 change in heave of its
+    own. Comparing the whole actual heave change against only that last
+    step's prediction blamed the whole 0.4mm correction on "model
+    residual" - it was really just not the step that made it.
+    """
+    n_steps = len(session.steps)
+    assert n_steps > 1
+    for _ in range(n_steps):
+        step = _step(session)
+        # Normally the server captures this on every /api/encoders read;
+        # done by hand here since this test drives the session directly.
+        # Without it every move's datum_group is "" and they all collapse
+        # into one (wrong) group for the last-move-per-group logic below.
+        if session.needs_datum(step):
+            session.capture_datum(dict.fromkeys(G.ENCODER_IDS, 0.0), step["group"])
+        session.complete_step(_readings(step["expected"]))
+    assert session.phase == "verify"
+
+    # The plan only ever commands heave down to the session's own bias
+    # target (see compute_plan's heave_bias_mm), not to raw zero - so a
+    # self-consistent "after" survey sits at that bias, not at true nominal.
+    bias = session.heave_bias_mm or 0.0
+    expected_change = bias - 0.4
+    session.add_survey(survey_for(G.machine("MS"), {"heave": bias}))
+    mc = session.moves[-1].get("model_check")
+    assert mc is not None
+    assert len(mc["steps"]) == n_steps  # every step in the round, not just one
+    assert mc["actual"]["heave"] == pytest.approx(expected_change, abs=1e-3)
+    # Fixed: predicted combines the whole round (last move per group, since
+    # moves sharing a datum are cumulative, not incremental - see the
+    # comment in add_survey), so it tracks the actual heave correction -
+    # not just whatever the round's last step (surge) contributed alone.
+    assert mc["predicted"]["heave"] == pytest.approx(expected_change, abs=0.05)
+    assert abs(mc["residual"]["heave"]) < 0.05
+
+
 def test_missing_reading_is_json_safe(session: Session):
     """float('inf') here once broke the browser's whole poll loop."""
     step = _step(session)
@@ -144,11 +254,29 @@ def test_override_is_recorded_with_who_and_why(session: Session):
     assert session.moves[0]["step"] == step["id"]
 
 
-def test_step_back_does_not_replay_stale_targets(session: Session):
+def test_step_back_without_a_live_pose_just_warns(session: Session):
+    """The session layer itself has no live readings - that's server.py's job
+    (see test_server.py's step-back tests for the actual recompute path).
+    Called with no live_err, it must not silently replay stale targets as if
+    they were fresh - it has to say so.
+    """
     session.complete_step(_readings(_step(session)["expected"]))
     res = session.step_back()
     assert res["ok"] and not res["recomputed"]
     assert "re-survey" in res["warning"]
+
+
+def test_step_back_with_a_live_pose_recomputes_the_plan(session: Session):
+    before_targets = dict(_step(session)["targets"])
+    session.complete_step(_readings(_step(session)["expected"]))
+    assert session.current_err is not None
+    live_err = dict(session.current_err)
+    live_err["heave"] += 0.2  # pretend the girder is 0.2 mm off from the plan
+    res = session.step_back(live_err=live_err)
+    assert res["ok"] and res["recomputed"]
+    assert session.current_err is not None
+    assert session.current_err["heave"] == pytest.approx(live_err["heave"])
+    assert _step(session)["targets"] != before_targets
 
 
 def test_undo_survey_restores_the_previous_state(session: Session, survey_for):
@@ -162,9 +290,16 @@ def test_undo_survey_restores_the_previous_state(session: Session, survey_for):
 
 
 def test_converged_survey_completes_the_session(session: Session, survey_for):
-    session.add_survey(survey_for(G.machine("MS"), {}))
+    """"Converged" means on the session's own target, heave pre-set included.
+
+    Phase stays "solved", not "complete" - the operator can still choose to
+    accept the survey and generate a further round of correction steps even
+    though the session is already marked complete.
+    """
+    err = {"heave": session.heave_bias_mm} if session.heave_bias_mm else {}
+    session.add_survey(survey_for(G.machine("MS"), err))
     assert session.status == "complete"
-    assert session.phase == "complete"
+    assert session.phase == "solved"
 
 
 def test_persistence_round_trip(session: Session, tmp_path):

@@ -18,6 +18,7 @@ import json
 import math
 from datetime import UTC, datetime
 from pathlib import Path
+from xml.sax.saxutils import escape as _xml_escape
 
 import numpy as np
 from reportlab.lib import colors
@@ -25,13 +26,13 @@ from reportlab.lib.enums import TA_CENTER
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm as MM
+from reportlab.pdfgen import canvas as _canvas
 from reportlab.platypus import (
     BaseDocTemplate,
     Frame,
     KeepTogether,
     PageTemplate,
     Paragraph,
-    Spacer,
     Table,
     TableStyle,
 )
@@ -53,7 +54,7 @@ def _pose_disp(m, err, p):
     return t + np.cross(th, np.asarray(p, float) - m.p0)
 
 
-def _views_drawing(session, width):
+def _views_drawing(session, width, err=None, label="required correction"):
     """Plan + end views drawn with ReportLab's own primitives.
 
     Deliberately NOT matplotlib: an optional import that fails silently is how
@@ -64,6 +65,10 @@ def _views_drawing(session, width):
     downstream in end view), matching the on-screen views. Arrow length is scaled
     automatically so the largest correction reads clearly at any error magnitude,
     and the resulting factor is printed so nothing is mistaken for to-scale.
+
+    ``err`` defaults to the initial (required-correction) pose; pass
+    ``session.current_err`` for an as-left view instead, with a matching
+    ``label`` for the in-drawing caption.
     """
     from reportlab.graphics.shapes import (
         Circle,
@@ -76,7 +81,16 @@ def _views_drawing(session, width):
     )
 
     m = session.machine
-    err = session.initial_err or session.current_err
+    err = err if err is not None else (session.initial_err or session.current_err)
+    # Draw the correction to the INTENDED target, not true zero: with a heave
+    # pre-set in effect the girder is deliberately left heave_bias_mm off raw
+    # nominal, so a correctly-positioned girder must show as no correction
+    # needed here, not as still being short by the bias (see assess()'s
+    # `target` param, used the same way for the pose table above).
+    bias = session.heave_bias_mm or 0.0
+    if err and bias:
+        err = dict(err)
+        err["heave"] = err.get("heave", 0.0) - bias
     jx, jz, p0 = m.jx, m.jz, m.p0
 
     def along(p):
@@ -112,11 +126,15 @@ def _views_drawing(session, width):
         + [float(e2["p"][1]) for e2 in m.henc]
     )
     aMinE, aMaxE = min(AE0) - 260, max(AE0) + 260
-    yMinE, yMaxE = min(YE0) - 95, max(YE0) + 110
+    yMinE, yMaxE = min(YE0) - 130, max(YE0) + 110
     ew = 78 * MM
     se = ew / (aMaxE - aMinE)
     END_H = (yMaxE - yMinE) * se + 8 * MM
-    GAP, CAP = 5 * MM, 2 * MM
+    # GAP/CAP set the buffer between the two views and around each caption -
+    # generous on purpose: a large correction's auto-scaled arrow (below) can
+    # reach close to its view's edge, and a tight caption strip is exactly
+    # what let it overlap the caption text underneath.
+    GAP, CAP = 7 * MM, 5 * MM
     d = Drawing(width, PLAN_H + GAP + END_H + CAP)
 
     def arrow(g, x1, y1, x2, y2, col, w=0.9, hl=4.0):
@@ -147,13 +165,15 @@ def _views_drawing(session, width):
 
     # Arrow length is auto-scaled: the largest correction becomes a fixed fraction
     # of the girder half-width, so it reads clearly whether the error is 5 mm or
-    # 20 um and never sprawls across the page.
-    ascale = (0.42 * (cMax - cMin) * s / maxd) if maxd > 1e-9 else 0.0
+    # 20 um and never sprawls across the page. Kept comfortably under half so
+    # the worst-case arrow, from a point already near the box edge, still lands
+    # inside the box rather than reaching the caption below it.
+    ascale = (0.34 * (cMax - cMin) * s / maxd) if maxd > 1e-9 else 0.0
 
     fa = [along(p) for p in fids]
     fc = [across(p) for p in fids]
-    bx0, by0 = ox0 + (min(fa) - 170 - aMin) * s, oy0 + (min(fc) - 120 - cMin) * s
-    bx1, by1 = ox0 + (max(fa) + 170 - aMin) * s, oy0 + (max(fc) + 120 - cMin) * s
+    bx0, by0 = ox0 + (min(fa) - 170 - aMin) * s, oy0 + (min(fc) - 150 - cMin) * s
+    bx1, by1 = ox0 + (max(fa) + 170 - aMin) * s, oy0 + (max(fc) + 150 - cMin) * s
     g.add(
         Rect(
             bx0,
@@ -257,8 +277,9 @@ def _views_drawing(session, width):
         String(
             ox0,
             oy0 - 5.5 * MM,
-            "PLAN VIEW \u2014 jack frame, girder horizontal. Arrows = required "
-            f"correction at each survey point (\u00d7{ascale / max(s, 1e-9):,.0f} "
+            "PLAN VIEW \u2014 jack frame, girder horizontal. Arrows = "
+            f"{label} at each survey point "
+            f"(\u00d7{ascale / max(s, 1e-9):,.0f} "
             "vs geometry); \u25b2\u25bc = vertical mm.",
             fontSize=5.2,
             fillColor=C_TXT,
@@ -318,7 +339,7 @@ def _views_drawing(session, width):
     # In this projection the fiducials collapse onto a handful of transverse
     # positions, so nine overlapping arrows would be unreadable. Group by across
     # position and draw the mean correction once per distinct location.
-    asc_e = (0.24 * (yMaxE - yMinE) * se / maxd) if maxd > 1e-9 else 0.0
+    asc_e = (0.19 * (yMaxE - yMinE) * se / maxd) if maxd > 1e-9 else 0.0
     groups = {}
     for i, f in enumerate(fids):
         key = round(across(f) / 5.0)
@@ -346,14 +367,15 @@ def _views_drawing(session, width):
                 fillColor=C_LINE,
             )
         )
+    # Left-justified at the same x as the PLAN VIEW caption below (`pad`, the
+    # drawing's own left margin) - not `exo`, which is the END view's own
+    # centred sub-box origin and would centre this caption within the page
+    # rather than align it with the other one.
     ge.add(
         String(
-            exo,
-            1.2 * MM,
-            "END VIEW \u2014 looking along the jack-Z (beam) axis, so the survey "
-            "points from BOTH ends coincide: "
-            f"{len(fids)} points collapse onto {len(groups)} transverse positions. "
-            "Roll tilts the row \u00b7 heave shifts it \u00b7 sway slides it.",
+            pad,
+            2.2 * MM,
+            "END VIEW \u2014 looking along the jack-Z (beam) axis.",
             fontSize=5.0,
             fillColor=C_TXT,
         )
@@ -400,7 +422,18 @@ def _styles():
             spaceAfter=6,
         )
     )
+    ss.add(ParagraphStyle("Cell", fontName="Helvetica", fontSize=7.6, leading=9))
     return ss
+
+
+def _cell(text, ss) -> Paragraph:
+    """A wrapping table cell.
+
+    Plain strings in a reportlab Table only break on a literal "\\n" - a long
+    filename, step title or free-text reason just overruns into the next
+    column. Use this for any column that can hold generated or free text.
+    """
+    return Paragraph(_xml_escape(str(text)), ss["Cell"])
 
 
 def _tbl(data, widths, style_extra=None, header=True):
@@ -460,7 +493,10 @@ class _Doc(BaseDocTemplate):
             9 * MM,
             f"Girder {s.serial} ({s.gtype}) · session {s.id} · operator {s.operator}",
         )
-        canv.drawRightString(A4[0] - 16 * MM, 9 * MM, f"Page {doc.page}")
+        # Page number itself is drawn by _NumberedCanvas.save(), once the
+        # total page count is known - drawing "Page X" here (doc.page alone)
+        # would need a second value this single pass through the flowables
+        # never has.
         canv.setStrokeColor(colors.HexColor("#c8d0d8"))
         canv.line(16 * MM, 12 * MM, A4[0] - 16 * MM, 12 * MM)
         if self.partial:
@@ -474,6 +510,34 @@ class _Doc(BaseDocTemplate):
         canv.restoreState()
 
 
+class _NumberedCanvas(_canvas.Canvas):
+    """Buffers pages so the footer can print "Page X of Y" - the total page
+    count isn't known until every flowable has been laid out, which is only
+    true once the whole document has already been drawn once.
+    """
+
+    def __init__(self, *args, **kwargs):
+        _canvas.Canvas.__init__(self, *args, **kwargs)
+        self._saved_page_states: list[dict] = []
+
+    def showPage(self):  # noqa: N802 - overrides reportlab's Canvas.showPage
+        self._saved_page_states.append(dict(self.__dict__))
+        self._startPage()  # pyright: ignore[reportAttributeAccessIssue]
+
+    def save(self):
+        total = len(self._saved_page_states)
+        for state in self._saved_page_states:
+            self.__dict__.update(state)
+            self.setFont("Helvetica", 7)
+            self.setFillColor(GREY)
+            page_no = self._pageNumber  # pyright: ignore[reportAttributeAccessIssue]
+            self.drawRightString(
+                A4[0] - 16 * MM, 9 * MM, f"Page {page_no} of {total}"
+            )
+            _canvas.Canvas.showPage(self)
+        _canvas.Canvas.save(self)
+
+
 def build_pdf(session, out_dir: Path, partial: bool = False) -> Path:
     ss = _styles()
     out_dir = Path(out_dir)
@@ -484,13 +548,6 @@ def build_pdf(session, out_dir: Path, partial: bool = False) -> Path:
 
     st = []
     st.append(Paragraph("Girder Alignment Report", ss["H"]))
-    st.append(
-        Paragraph(
-            f"{'Partial record — alignment not completed' if partial else 'As-left record'}"  # noqa: E501
-            f" · generated {datetime.now(UTC).strftime('%Y-%m-%d %H:%M UTC')}",
-            ss["Sub"],
-        )
-    )
     if partial:
         st.append(
             Paragraph(
@@ -501,41 +558,39 @@ def build_pdf(session, out_dir: Path, partial: bool = False) -> Path:
 
     # -- identity ---------------------------------------------------------
     a = session.state().get("assessment") or {}
-    st.append(Paragraph("Identification", ss["H2"]))
-    st.append(
-        _tbl(
+    ident_tbl = _tbl(
+        [
+            ["Girder serial", session.serial, "Operator", session.operator],
+            ["Girder type", session.gtype, "Session id", session.id],
+            ["Started", session.created, "Status", session.status],
             [
-                ["Girder serial", session.serial, "Operator", session.operator],
-                ["Girder type", session.gtype, "Session id", session.id],
-                ["Started", session.created, "Status", session.status],
-                [
-                    "Geometry revision",
-                    session.geometry_revision,
-                    "Software",
-                    session.software_version,
-                ],
-                [
-                    "Bay",
-                    session.bay or "—",
-                    "Temperature",
-                    "—"
-                    if session.temperature is None
-                    else f"{session.temperature:.1f} °C",
-                ],
-                [
-                    "Iterations",
-                    str(session.iteration),
-                    "Moves",
-                    str(len(session.moves)),
-                ],
+                "Geometry revision",
+                session.geometry_revision,
+                "Software",
+                session.software_version,
             ],
-            [30 * MM, 52 * MM, 30 * MM, 52 * MM],
-            header=False,
-        )
+            [
+                "Bay",
+                session.bay or "—",
+                "Temperature",
+                "—"
+                if session.temperature is None
+                else f"{session.temperature:.1f} °C",
+            ],
+            [
+                "Iterations",
+                str(session.iteration),
+                "Moves",
+                str(len(session.moves)),
+            ],
+            ["Girder state", _girder_state(session), "", ""],
+        ],
+        [30 * MM, 52 * MM, 30 * MM, 52 * MM],
+        header=False,
     )
+    st.append(KeepTogether([Paragraph("Identification", ss["H2"]), ident_tbl]))
 
     # -- outcome ----------------------------------------------------------
-    st.append(Paragraph("Pose — initial vs as-left", ss["H2"]))
     rows = [
         ["Axis", "Unit", "Tolerance", "Initial error", "As-left", "% of tol", "Status"]
     ]
@@ -562,36 +617,71 @@ def build_pdf(session, out_dir: Path, partial: bool = False) -> Path:
         if col:
             style_extra.append(("TEXTCOLOR", (6, i), (6, i), col))
             style_extra.append(("FONT", (6, i), (6, i), "Helvetica-Bold", 7.6))
-    st.append(
-        _tbl(
-            rows,
-            [24 * MM, 14 * MM, 20 * MM, 26 * MM, 26 * MM, 20 * MM, 22 * MM],
-            style_extra,
-        )
+    pose_tbl = _tbl(
+        rows,
+        [24 * MM, 14 * MM, 20 * MM, 26 * MM, 26 * MM, 20 * MM, 22 * MM],
+        style_extra,
     )
     st.append(
-        Paragraph(
-            "Errors are the girder pose relative to target, in the jack frame. "
-            "Angles in mrad, translations in mm. Priority order: roll, sway, heave, "
-            "yaw, pitch, surge.",
-            ss["Small"],
+        KeepTogether([Paragraph("Pose — initial vs as-left", ss["H2"]), pose_tbl])
+    )
+    # "As-left" only ever comes from a survey upload, never from a move — if
+    # the last move happened after the last survey (or there's no survey at
+    # all yet), the "As-left" column above is really the PRE-move pose, not
+    # a confirmed as-left result. Flag it explicitly rather than let it look
+    # like a stale-looking match is a bug.
+    last_survey_t = session.surveys[-1]["t"] if session.surveys else None
+    last_move_t = session.moves[-1]["t"] if session.moves else None
+    if last_move_t and (last_survey_t is None or last_survey_t < last_move_t):
+        st.append(
+            Paragraph(
+                "! No survey has been taken since the last move — “As-left” "
+                "above is the pose from BEFORE that move, not a confirmed "
+                "result. Re-survey to confirm the as-left pose.",
+                ss["Warn"],
+            )
+        )
+
+    # -- plan + end views -------------------------------------------------
+    st.append(
+        KeepTogether(
+            [
+                Paragraph("Required correction — plan and end views", ss["H2"]),
+                _views_drawing(session, 170 * MM, err=session.initial_err),
+                Paragraph(
+                    "Arrows are the correction at each survey point (measured → "
+                    "nominal). Both views are in the jack frame: the plan view "
+                    "puts the girder horizontal, the end view looks downstream "
+                    "along the beam. In-plane arrows are exaggerated to be "
+                    "visible; in the plan view the vertical component is "
+                    "labelled numerically in mm.",
+                    ss["Small"],
+                ),
+            ]
         )
     )
 
-    # -- plan + end views -------------------------------------------------
-    st.append(Paragraph("Required correction — plan and end views", ss["H2"]))
-    st.append(_views_drawing(session, 170 * MM))
-    st.append(
-        Paragraph(
-            "Arrows are the correction at each survey point (measured → nominal). Both "
-            "views are in the jack frame: the plan view puts the girder "
-            "horizontal, the "
-            "end view looks downstream along the beam. In-plane arrows are exaggerated "
-            "to be visible; in the plan view the vertical component is labelled "
-            "numerically in mm.",
-            ss["Small"],
+    if session.current_err:
+        st.append(
+            KeepTogether(
+                [
+                    Paragraph("As-left — plan and end views", ss["H2"]),
+                    _views_drawing(
+                        session,
+                        170 * MM,
+                        err=session.current_err,
+                        label="as-left residual",
+                    ),
+                    Paragraph(
+                        "Same projection and scaling convention as the required-"
+                        "correction views above, but showing what's left after "
+                        "the recorded moves (as-left survey → nominal), not the "
+                        "starting error.",
+                        ss["Small"],
+                    ),
+                ]
+            )
         )
-    )
 
     # -- surveys ----------------------------------------------------------
     st.append(Paragraph("Survey history", ss["H2"]))
@@ -617,7 +707,7 @@ def build_pdf(session, out_dir: Path, partial: bool = False) -> Path:
             [
                 str(s["iteration"]),
                 s["t"].replace("T", " ")[:19],
-                (s.get("filename") or s.get("source", "—"))[:18],
+                _cell(s.get("filename") or s.get("source", "—"), ss),
                 f"{s['fit']['n']}",
                 f"{s['fit']['rms']:.4f}",
                 f"{s['fit']['max']:.4f}",
@@ -657,6 +747,17 @@ def build_pdf(session, out_dir: Path, partial: bool = False) -> Path:
                 "Survey warnings: " + "; ".join(dict.fromkeys(warns)), ss["Small"]
             )
         )
+    comments = [
+        (s["iteration"], s["comment"]) for s in session.surveys if s.get("comment")
+    ]
+    if comments:
+        st.append(
+            Paragraph(
+                "Operator comments: "
+                + "; ".join(f"#{i} — {_xml_escape(c)}" for i, c in comments),
+                ss["Small"],
+            )
+        )
 
     # -- moves ------------------------------------------------------------
     st.append(Paragraph("Moves — target vs achieved", ss["H2"]))
@@ -675,29 +776,65 @@ def build_pdf(session, out_dir: Path, partial: bool = False) -> Path:
     ]
     extra = []
     r = 1
+    any_reopened = False
     for mv in session.moves:
+        reopened = bool(mv.get("reopened"))
+        any_reopened = any_reopened or reopened
+        row_start = r
         first = True
+        title = mv["step"] + (" [REOPENED — redone below]" if reopened else "")
+        status_parts = []
+        if mv["override"]:
+            status_parts.append("OVERRIDE")
+        if reopened:
+            status_parts.append("REOPENED")
+        status = " + ".join(status_parts) if status_parts else "pass"
         for eid, tgt in mv["targets"].items():
             ach = (mv["achieved"] or {}).get(eid)
             err = (mv["errors"] or {}).get(eid)
             rows.append(
                 [
                     str(mv["iteration"]) if first else "",
-                    (mv["step"] if first else ""),
+                    _cell(title, ss) if first else "",
                     eid,
                     _fmt(tgt),
                     _fmt(ach),
                     _fmt(err, 4),
                     f"{mv['warp']:+.4f}" if first else "",
                     f"{mv['stretch']:+.4f}" if first else "",
-                    ("OVERRIDE" if mv["override"] else "pass") if first else "",
+                    status if first else "",
                 ]
             )
             if first and mv["override"]:
                 extra.append(("TEXTCOLOR", (8, r), (8, r), BAD))
                 extra.append(("FONT", (8, r), (8, r), "Helvetica-Bold", 7.6))
+            if first and reopened:
+                extra.append(("TEXTCOLOR", (8, r), (8, r), WARN))
+                extra.append(("FONT", (8, r), (8, r), "Helvetica-Bold", 7.6))
             first = False
             r += 1
+        # The other, monitored encoders — not this step's own target, but
+        # still read at the moment it completed (all_encoders is the full
+        # 8-encoder reading; targets is just the 1-2 this step drove).
+        for eid in G.ENCODER_IDS:
+            if eid in mv["targets"]:
+                continue
+            ach = (mv.get("all_encoders") or {}).get(eid)
+            rows.append(
+                ["", "", _cell(f"{eid} (monitor)", ss), "—", _fmt(ach), "—", "", "", ""]
+            )
+            extra.append(("TEXTCOLOR", (2, r), (5, r), GREY))
+            r += 1
+        if mv.get("comment"):
+            rows.append(
+                ["", "", _cell(f"Comment: {mv['comment']}", ss), "", "", "", "", "", ""]
+            )
+            extra.append(("TEXTCOLOR", (2, r), (2, r), ACCENT))
+            r += 1
+        if reopened:
+            extra.append(
+                ("BACKGROUND", (0, row_start), (-1, r - 1), colors.HexColor("#fdf0e0"))
+            )
     if len(rows) == 1:
         rows.append(["—"] * 9)
     st.append(
@@ -717,17 +854,23 @@ def build_pdf(session, out_dir: Path, partial: bool = False) -> Path:
             extra,
         )
     )
-    st.append(
-        Paragraph(
-            "Achieved values are encoder readings relative to the datum "
-            "captured automatically when each move group opened. Only the last "
-            "pair moved lands on final targets; earlier "
-            "pairs stop at a compensated intermediate value "
-            f"(cross-shift ≈ {G.cross_shift_ratio(session.machine):.4f} mm per mm of "
-            "far-pair travel).",
-            ss["Small"],
-        )
+    moves_note = (
+        "Achieved values are encoder readings relative to the datum "
+        "captured automatically when each move group opened. Only the last "
+        "pair moved lands on final targets; earlier "
+        "pairs stop at a compensated intermediate value "
+        f"(cross-shift ≈ {G.cross_shift_ratio(session.machine):.4f} mm per mm of "
+        "far-pair travel). Rows marked “(monitor)” are the other, "
+        "un-targeted encoders' readings at the same moment — recorded "
+        "even though this step didn't drive them."
     )
+    if any_reopened:
+        moves_note += (
+            " Highlighted rows were REOPENED — the operator went back to that "
+            "step after confirming it complete, so it was redone; the later "
+            "entry for the same step is the one that stands."
+        )
+    st.append(Paragraph(moves_note, ss["Small"]))
 
     # -- overrides --------------------------------------------------------
     if session.overrides:
@@ -737,11 +880,11 @@ def build_pdf(session, out_dir: Path, partial: bool = False) -> Path:
             rows.append(
                 [
                     o["t"].replace("T", " ")[:19],
-                    o["step"],
+                    _cell(o["step"], ss),
                     o["by"],
                     f"{o['worst_error']:.4f}",
                     f"{o['gate_mm']:.4f}",
-                    o["reason"] or "—",
+                    _cell(o["reason"] or "—", ss),
                 ]
             )
         st.append(_tbl(rows, [30 * MM, 28 * MM, 24 * MM, 22 * MM, 18 * MM, 56 * MM]))
@@ -750,14 +893,16 @@ def build_pdf(session, out_dir: Path, partial: bool = False) -> Path:
     checks = [m for m in session.moves if m.get("model_check")]
     if checks:
         st.append(Paragraph("Model validation — predicted vs achieved", ss["H2"]))
-        rows = [["Step", "Axis", "Predicted", "Actual", "Residual"]]
+        rows = [["Steps since last survey", "Axis", "Predicted", "Actual", "Residual"]]
+        any_warp = False
         for m in checks:
             mc = m["model_check"]
+            label = ", ".join(mc.get("steps") or [m["step"]])
             first = True
             for k, _l, _u, _d in G.AXES:
                 rows.append(
                     [
-                        m["step"] if first else "",
+                        _cell(label, ss) if first else "",
                         k,
                         _fmt(mc["predicted"].get(k)),
                         _fmt(mc["actual"].get(k)),
@@ -765,64 +910,185 @@ def build_pdf(session, out_dir: Path, partial: bool = False) -> Path:
                     ]
                 )
                 first = False
+            # "warp" isn't in AXES (it's a parasitic mode, not a correctable
+            # DOF) and is only ever predicted - not just echoed back as its
+            # own residual - when the girder type has FEA compliance data;
+            # see predicted_pose_change's docstring. Shown separately, and
+            # only when it was genuinely predicted, so this table never
+            # implies a validation that didn't happen.
+            if "warp" in mc["predicted"]:
+                any_warp = True
+                rows.append(
+                    [
+                        "",
+                        "warp",
+                        _fmt(mc["predicted"].get("warp"), 4),
+                        _fmt(mc["actual"].get("warp"), 4),
+                        _fmt(mc["residual"].get("warp"), 4),
+                    ]
+                )
         st.append(_tbl(rows, [34 * MM, 24 * MM, 34 * MM, 34 * MM, 34 * MM]))
+        warp_note = (
+            " \"warp\" rows recover the checkerboard amplitude the same way "
+            "from achieved encoder deltas as the 6 rigid axes above - a "
+            "consistent residual here across many sessions is exactly the "
+            "signal that the stored FEA compliance gain needs revising."
+            if any_warp
+            else ""
+        )
         st.append(
             Paragraph(
-                "Achieved encoder deltas pushed through the Jacobian and "
-                "compared with the "
-                "next survey. Large residuals indicate the geometric model or the "
-                "bearing pivot assumption needs review.",
+                "Achieved encoder deltas, pushed through the Jacobian, summed "
+                "across every step since the previous survey - not just the "
+                "last one, or a heave correction made two steps before a "
+                "final surge move would show up entirely as residual - and "
+                "compared with the next survey. Large residuals indicate the "
+                "geometric model or the bearing pivot assumption needs review."
+                + warp_note,
                 ss["Small"],
             )
         )
 
-    # -- survey data ------------------------------------------------------
+    # -- survey data --------------------------------------------------------
+    # Every survey, not just the last: an alignment is normally a handful of
+    # iterations, so this stays a short, readable list rather than needing
+    # pagination or a "changed since last time" summary.
     if session.surveys:
-        last = session.surveys[-1]
-        st.append(Paragraph("Uploaded survey data (last survey)", ss["H2"]))
-        rows = [["Reference", "X", "Y", "Z", "Residual mm"]]
-        for name, p in last["matched"].items():
-            rows.append(
-                [
-                    name,
-                    f"{p[0]:.3f}",
-                    f"{p[1]:.3f}",
-                    f"{p[2]:.3f}",
-                    f"{last['fit']['residuals'].get(name, 0):.4f}",
-                ]
-            )
-        st.append(_tbl(rows, [30 * MM, 32 * MM, 32 * MM, 32 * MM, 30 * MM]))
+        for sv in session.surveys:
+            rows = [["Reference", "X", "Y", "Z", "Residual mm"]]
+            for name, p in sv["matched"].items():
+                rows.append(
+                    [
+                        name,
+                        f"{p[0]:.3f}",
+                        f"{p[1]:.3f}",
+                        f"{p[2]:.3f}",
+                        f"{sv['fit']['residuals'].get(name, 0):.4f}",
+                    ]
+                )
+            sv_group = [
+                Paragraph(
+                    f"Uploaded survey data — iteration {sv['iteration']}", ss["H2"]
+                ),
+                _tbl(rows, [30 * MM, 32 * MM, 32 * MM, 32 * MM, 30 * MM]),
+            ]
+            st.append(KeepTogether(sv_group))
         st.append(
             Paragraph(
                 "Points are matched to reference fiducials by proximity (gate "
                 f"{G.PROXIMITY_GATE_MM:g} mm), not by name — names repeat "
-                "between girder "
-                "types.",
+                "between girder types. Residual is the fit residual (after "
+                "removing the best-fit rigid pose), not the raw offset from "
+                "nominal — see the summary below for that.",
                 ss["Small"],
             )
         )
 
-    # -- sign off ---------------------------------------------------------
-    st.append(Spacer(1, 8))
-    st.append(
-        KeepTogether(
-            [
-                Paragraph("Sign-off", ss["H2"]),
-                _tbl(
-                    [
-                        ["Aligned by", session.operator, "Signature", ""],
-                        ["Checked by", "", "Signature", ""],
-                        ["Date", "", "Notes", session.notes or ""],
-                    ],
-                    [24 * MM, 50 * MM, 24 * MM, 66 * MM],
-                    header=False,
-                ),
-            ]
-        )
-    )
+        # -- final survey vs nominal, raw (not fit-residual) ---------------
+        # Measured against the INTENDED target, not raw nominal: with a
+        # heave pre-set in effect, the girder is deliberately left
+        # heave_bias_mm off true nominal in Y, so a correctly-positioned
+        # girder must show as zero here, not as "off by the bias".
+        last = session.surveys[-1]
+        m = session.machine
+        bias = session.heave_bias_mm or 0.0
+        target_offset = np.array([0.0, bias, 0.0])
+        names = [name for name in last["matched"] if name in m.fids]
+        deltas = [
+            np.asarray(last["matched"][name], float)
+            - np.asarray(m.fids[name], float)
+            - target_offset
+            for name in names
+        ]
+        if deltas:
+            arr = np.array(deltas)
+            mag = np.linalg.norm(arr, axis=1)
+            final_note = (
+                "Raw measured − target per point, before any rigid-pose fit "
+                "— this is how far the girder actually was from where it was "
+                "meant to be, not how well the fit explains it."
+                if not bias
+                else (
+                    "Raw measured − target per point (target = nominal, with "
+                    f"the {bias:+.3f} mm heave pre-set applied in Y), before "
+                    "any rigid-pose fit — this is how far the girder actually "
+                    "was from where it was meant to be, not how well the fit "
+                    "explains it."
+                )
+            )
 
-    _Doc(str(path), session, partial).build(st)
+            # Plain ASCII column headers - reportlab's base Helvetica is
+            # WinAnsi-encoded and has no glyph for U+0394 (GREEK CAPITAL
+            # DELTA), unlike the em dash/plus-minus/multiply signs used
+            # elsewhere in this file, which WinAnsi does cover.
+            point_rows = [["Reference", "dX mm", "dY mm", "dZ mm", "3D delta mm"]]
+            for name, row, m3 in zip(names, arr, mag, strict=True):
+                point_rows.append(
+                    [
+                        name,
+                        f"{row[0]:+.3f}",
+                        f"{row[1]:+.3f}",
+                        f"{row[2]:+.3f}",
+                        f"{m3:.3f}",
+                    ]
+                )
+            st.append(
+                KeepTogether(
+                    [
+                        Paragraph(
+                            f"Final survey vs target — per point (iteration "
+                            f"{last['iteration']})",
+                            ss["H2"],
+                        ),
+                        _tbl(point_rows, [30 * MM, 32 * MM, 32 * MM, 32 * MM, 30 * MM]),
+                        Paragraph(final_note, ss["Small"]),
+                    ]
+                )
+            )
+
+            summary_rows = [["Axis", "Mean mm", "RMS mm", "Max |·| mm"]]
+            for i, axis in enumerate("XYZ"):
+                col = arr[:, i]
+                summary_rows.append(
+                    [
+                        axis,
+                        f"{np.mean(col):+.3f}",
+                        f"{math.sqrt(np.mean(col**2)):.3f}",
+                        f"{np.max(np.abs(col)):.3f}",
+                    ]
+                )
+            summary_rows.append(
+                [
+                    "Magnitude",
+                    "—",
+                    f"{math.sqrt(np.mean(mag**2)):.3f}",
+                    f"{np.max(mag):.3f}",
+                ]
+            )
+            st.append(
+                KeepTogether(
+                    [
+                        Paragraph(
+                            f"Final survey vs target — summary (iteration "
+                            f"{last['iteration']})",
+                            ss["H2"],
+                        ),
+                        _tbl(summary_rows, [30 * MM, 30 * MM, 30 * MM, 30 * MM]),
+                    ]
+                )
+            )
+
+    _Doc(str(path), session, partial).build(st, canvasmaker=_NumberedCanvas)
     return path
+
+
+def _girder_state(session) -> str:
+    # The session only records the heave pre-set: the UI's "loaded" toggle
+    # forces it to 0.0, "bare" takes the type's recommended pre-set.
+    bias = session.heave_bias_mm or 0.0
+    if bias:
+        return f"Bare (heave pre-set {bias:+.3f} mm)"
+    return "Loaded with magnets (no pre-set)"
 
 
 def build_json(session, out_dir: Path, partial: bool = False) -> Path:
@@ -833,6 +1099,7 @@ def build_json(session, out_dir: Path, partial: bool = False) -> Path:
     path = out_dir / f"girder_{session.serial}_{session.gtype}_{stamp}_{suffix}.json"
     d = session.to_dict()
     d["partial"] = partial
+    d["girder_state"] = "loaded" if not session.heave_bias_mm else "bare"
     d["generated"] = datetime.now(UTC).isoformat(timespec="seconds")
     path.write_text(json.dumps(d, indent=1, default=str))
     return path

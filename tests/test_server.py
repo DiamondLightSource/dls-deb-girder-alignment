@@ -58,6 +58,45 @@ def test_info_reports_this_bay(client):
     assert "MS" in info["types"]
 
 
+def test_info_exposes_each_types_sag_bias_mm(client):
+    """The "bare vs loaded" setup toggle looks this up per type so its note
+    text can never drift from the actual value compute_plan will use.
+    """
+    info = _json(client.client.get("/api/info"))
+    assert info["types"]["MS"]["sag_bias_mm"] == pytest.approx(0.24)
+
+
+def test_bare_girder_defaults_to_the_type_bias(client):
+    """Omitting heave_bias_mm (the "Bare girder" toggle state) must fall
+    back to the type's own recommended pre-set, not zero.
+    """
+    started = _json(
+        client.client.post(
+            "/api/session", json={"serial": "DLS0011116", "operator": "tester"}
+        )
+    )
+    assert started["session"]["heave_bias_mm"] == pytest.approx(0.24)
+
+
+def test_loaded_girder_forces_zero_bias(client):
+    """The "Loaded with magnets" toggle state sends heave_bias_mm=0.0
+    explicitly - the girder has already sagged under the real magnet
+    weight, so applying the bare-girder pre-set on top would be double
+    counting it.
+    """
+    started = _json(
+        client.client.post(
+            "/api/session",
+            json={
+                "serial": "DLS0011116",
+                "operator": "tester",
+                "heave_bias_mm": 0.0,
+            },
+        )
+    )
+    assert started["session"]["heave_bias_mm"] == 0.0
+
+
 def test_serial_lookup(client):
     assert _json(client.client.get("/api/serial/DLS0011116"))["type"] == "MS"
     unknown = _json(client.client.get("/api/serial/NOPE"))
@@ -135,7 +174,15 @@ def test_full_alignment_workflow(client, survey_for, cfg):
     assert fit["rms"] < 1e-6
     assert not surveyed["survey"]["assessment"]["in_tolerance"]
 
+    # The plan doesn't exist yet - the operator has to see the pose error and
+    # confirm before targets appear.
     session = surveyed["session"]
+    assert session["phase"] == "solved"
+    assert session["step"] is None
+
+    accepted = _json(client.client.post("/api/plan/accept", json={}))
+    assert accepted["ok"]
+    session = accepted["session"]
     assert session["phase"] == "moving"
     n_steps = session["n_steps"]
     assert n_steps == 4  # combined vertical (two pairs) + sway + surge
@@ -164,9 +211,12 @@ def test_full_alignment_workflow(client, survey_for, cfg):
     assert seen_groups == ["combined", "combined", "horizontal", "horizontal"]
     assert _json(client.client.get("/api/session"))["session"]["phase"] == "verify"
 
-    # A converged re-survey completes the session.
+    # A converged re-survey — on the session's own target, heave pre-set
+    # included — completes the session.
+    bias = _json(client.client.get("/api/session"))["session"]["heave_bias_mm"]
+    err = {"heave": bias} if bias else {}
     final = _json(
-        client.client.post("/api/survey", json={"points": survey_for(machine, {})})
+        client.client.post("/api/survey", json={"points": survey_for(machine, err)})
     )
     assert final["session"]["status"] == "complete"
 
@@ -175,6 +225,270 @@ def test_full_alignment_workflow(client, survey_for, cfg):
     assert (cfg.reports / report["pdf"]).stat().st_size > 1000
     assert (cfg.reports / report["json"]).exists()
     assert report["pdf"] in _json(client.client.get("/api/reports"))["reports"]
+
+
+def test_loop_back_survey_reactivates_a_complete_session(client, survey_for):
+    """A confirmation survey that comes back OUT of tolerance after an earlier
+    one already converged (status "complete") must put the session back into
+    play - otherwise the UI's poll loop, which stops once a session looks
+    "ended", never restarts and no step or encoder data shows for the
+    second iteration at all.
+    """
+    machine = G.machine("MS")
+    _json(
+        client.client.post(
+            "/api/session",
+            json={"serial": "DLS0011116", "operator": "tester", "heave_bias_mm": 0.0},
+        )
+    )
+    _json(
+        client.client.post(
+            "/api/survey", json={"points": survey_for(machine, {"heave": 0.5})}
+        )
+    )
+    _json(client.client.post("/api/plan/accept", json={}))
+    n_steps = _json(client.client.get("/api/session"))["session"]["n_steps"]
+    for _ in range(n_steps):
+        _json(client.client.get("/api/encoders"))
+        _json(client.client.post("/api/demo/drive", json={"fraction": 1.0}))
+        _settle(client)
+        _json(client.client.post("/api/step/complete", json={}))
+
+    converged = _json(
+        client.client.post("/api/survey", json={"points": survey_for(machine, {})})
+    )
+    assert converged["session"]["status"] == "complete"
+    # Phase stays "solved" even when converged - the operator can still
+    # choose to accept and refine further - so "ended" here comes from
+    # status alone, which is exactly what must reset on the next survey.
+    assert converged["session"]["phase"] == "solved"
+
+    # A second, out-of-tolerance confirmation survey - e.g. the operator
+    # picked the wrong file, or the girder genuinely drifted before it was
+    # re-checked - must reopen the session, not leave it looking finished.
+    loop_back = _json(
+        client.client.post(
+            "/api/survey", json={"points": survey_for(machine, {"heave": 0.3})}
+        )
+    )
+    assert loop_back["session"]["status"] == "active"
+    assert loop_back["session"]["phase"] == "solved"
+    assert not loop_back["survey"]["assessment"]["in_tolerance"]
+
+
+def test_step_back_within_a_group_reproduces_the_original_target(client, survey_for):
+    """/api/step/back must not just replay the targets computed before any
+    physical move happened — that was a latent bug: the session-layer recompute
+    path existed but nothing on the request path ever fed it live data. This
+    exercises the actual HTTP route, not just the session method directly.
+
+    But recomputing FROM the live reading isn't right either when the step
+    we're returning to is in the group we're still inside: only one of the
+    group's two pair-moves is done, so the girder is in a genuinely
+    asymmetric state a single scalar can't describe — see
+    Session.estimate_live_pose. The correct answer here is that the
+    already-completed step's target comes back exactly as it was (and as it
+    was achieved), not some fraction of it.
+    """
+    machine = G.machine("MS")
+    _json(
+        client.client.post(
+            "/api/session",
+            json={"serial": "DLS0011116", "operator": "tester", "heave_bias_mm": 0.0},
+        )
+    )
+    _json(
+        client.client.post(
+            "/api/survey", json={"points": survey_for(machine, {"heave": 0.5})}
+        )
+    )
+    _json(client.client.post("/api/plan/accept", json={}))
+    assert _json(client.client.get("/api/session"))["session"]["n_steps"] == 4
+
+    original_targets = _json(client.client.get("/api/session"))["session"]["step"][
+        "targets"
+    ]
+
+    # Complete the first vertical pair fully, so we're clear of step 0.
+    _json(client.client.get("/api/encoders"))
+    _json(client.client.post("/api/demo/drive", json={"fraction": 1.0}))
+    _settle(client)
+    done = _json(client.client.post("/api/step/complete", json={}))
+    assert done["accepted"]
+
+    state = _json(client.client.get("/api/session"))["session"]
+    assert state["step_index"] == 1
+
+    # Now at step 1 (the second vertical pair): drive PART way there, so the
+    # girder has genuinely moved but hasn't reached this step's target either.
+    # Driven explicitly by PV, targeting only step 1's own two encoders -
+    # "fraction" scales the whole block's expected state including the pair
+    # already parked at its step-0 target, which would retract it and
+    # confound this test with a second, unrelated simulator quirk.
+    enc0 = _json(client.client.get("/api/encoders"))
+    step1 = state["step"]
+    half_targets = {
+        eid: enc0["readings"][eid]["datum"] + 0.5 * delta
+        for eid, delta in step1["targets"].items()
+    }
+    _json(client.client.post("/api/demo/drive", json={"targets": half_targets}))
+    for _ in range(50):
+        _json(client.client.get("/api/encoders"))
+
+    back = _json(client.client.post("/api/step/back", json={}))
+    assert back["ok"]
+    assert back["recomputed"], "the live-pose recompute path must actually fire"
+    assert back["session"]["step_index"] == 0
+
+    # heave is "combined"'s own axis, so it must come back unchanged - not
+    # blended with the still-in-progress second pair's partial reading.
+    assert back["session"]["current_err"]["heave"] == pytest.approx(0.5, abs=1e-6)
+    for eid, tgt in back["step"]["targets"].items():
+        assert tgt == pytest.approx(original_targets[eid], abs=1e-6)
+
+    # The first pair was fully driven to its target before we stepped back
+    # into it - recomputing must NOT also recapture the datum (that was the
+    # remaining bug: it made an already-achieved pair read back as "at zero,
+    # full move still needed", because the fresh datum absorbed the very
+    # progress it was supposed to measure).
+    enc = _json(client.client.get("/api/encoders"))
+    for eid, tgt in back["step"]["targets"].items():
+        rel = enc["readings"][eid]["relative"]
+        assert rel == pytest.approx(tgt, abs=1e-3), (
+            f"{eid}: datum was recaptured on step-back, wiping out progress "
+            f"already made within the still-open group (relative={rel}, "
+            f"target={tgt})"
+        )
+
+
+def test_step_back_across_a_group_boundary_keeps_earlier_progress(client, survey_for):
+    """Stepping back into an EARLIER, different move group must not forget
+    the correction already completed there.
+
+    A live reading is only relative to the CURRENT group's datum, so on its
+    own it's blind to a previous group's progress — that datum is gone,
+    superseded the moment the new group opened. The bug this guards: fully
+    complete "combined", move into "sway", then back up into "combined"
+    again — a naive live-pose estimate reads ~0 on the (freshly re-datumed)
+    vertical encoders and reports the ORIGINAL, unfixed heave error again,
+    even though the girder is actually sitting correctly.
+    """
+    machine = G.machine("MS")
+    _json(
+        client.client.post(
+            "/api/session",
+            json={"serial": "DLS0011116", "operator": "tester", "heave_bias_mm": 0.0},
+        )
+    )
+    _json(
+        client.client.post(
+            "/api/survey", json={"points": survey_for(machine, {"heave": 0.5})}
+        )
+    )
+    _json(client.client.post("/api/plan/accept", json={}))
+
+    # Complete BOTH vertical-pair steps fully, so the whole "combined" group
+    # — and the heave error it corrects — is genuinely done.
+    for _ in range(2):
+        _json(client.client.get("/api/encoders"))
+        _json(client.client.post("/api/demo/drive", json={"fraction": 1.0}))
+        _settle(client)
+        done = _json(client.client.post("/api/step/complete", json={}))
+        assert done["accepted"]
+
+    state = _json(client.client.get("/api/session"))["session"]
+    assert state["step_index"] == 2
+    assert state["step"]["group"] == "horizontal"
+
+    back = _json(client.client.post("/api/step/back", json={}))
+    assert back["ok"] and back["recomputed"]
+    assert back["session"]["step_index"] == 1
+    assert back["step"]["group"] == "combined"
+
+    # The estimated pose must show heave as essentially corrected, not back
+    # to the original 0.5 mm the survey started at.
+    assert abs(back["session"]["current_err"]["heave"]) < 0.02
+    # And the re-solved targets for this (already-completed) step must be
+    # small — settling residue, not the original large uncorrected move.
+    for tgt in back["step"]["targets"].values():
+        assert abs(tgt) < 0.02
+
+
+def test_step_back_within_separate_heave_group_does_not_undershoot(client, survey_for):
+    """The real-world report this guards: with flatten/heave run SEPARATELY
+    (not combined), heave's own plan is a pure, uniform Y shift with no
+    differential — it can't express "first pair done, second pair still
+    needs to move". Once heave_first is complete and heave_second is still
+    open, the girder is asymmetric (one pair moved, the other hasn't); a full
+    rigid fit of that state misattributes part of the asymmetry as apparent
+    pitch, which silently steals from the estimated heave value and produces
+    a target well short of what heave_first already, correctly, achieved.
+    """
+    machine = G.machine("MS")
+    _json(
+        client.client.post(
+            "/api/session",
+            json={
+                "serial": "DLS0011116",
+                "operator": "tester",
+                "heave_bias_mm": 0.0,
+                "combine_vertical": False,
+            },
+        )
+    )
+    _json(
+        client.client.post(
+            "/api/survey",
+            json={"points": survey_for(machine, {"roll": 0.3, "heave": 0.5})},
+        )
+    )
+    _json(client.client.post("/api/plan/accept", json={}))
+
+    # Complete both flatten steps, then heave_first only - so heave (a
+    # separate group here) is genuinely mid-sequence: one pair done, one not.
+    for _ in range(2):
+        _json(client.client.get("/api/encoders"))
+        _json(client.client.post("/api/demo/drive", json={"fraction": 1.0}))
+        _settle(client)
+        assert _json(client.client.post("/api/step/complete", json={}))["accepted"]
+
+    heave_first_target = _json(client.client.get("/api/session"))["session"]["step"][
+        "targets"
+    ]
+    _json(client.client.get("/api/encoders"))
+    _json(client.client.post("/api/demo/drive", json={"fraction": 1.0}))
+    _settle(client)
+    done = _json(client.client.post("/api/step/complete", json={}))
+    assert done["accepted"]
+    achieved = done["move"]["achieved"]
+    for _ in range(5):
+        _json(client.client.get("/api/encoders"))
+
+    back = _json(client.client.post("/api/step/back", json={}))
+    assert back["ok"] and back["recomputed"]
+    assert back["step"]["group"] == "heave"
+
+    # The recomputed target for the already-completed pair must land back
+    # near what was actually achieved - not roughly half of it.
+    for eid, tgt in back["step"]["targets"].items():
+        assert tgt == pytest.approx(heave_first_target[eid], abs=0.01)
+        assert tgt == pytest.approx(achieved[eid], abs=0.02)
+
+
+def test_step_back_at_the_first_step_is_a_clean_no_op(client, survey_for):
+    machine = G.machine("MS")
+    _json(
+        client.client.post(
+            "/api/session", json={"serial": "DLS0011116", "operator": "tester"}
+        )
+    )
+    _json(
+        client.client.post(
+            "/api/survey", json={"points": survey_for(machine, {"heave": 0.5})}
+        )
+    )
+    res = _json(client.client.post("/api/step/back", json={}))
+    assert res["ok"] is False
 
 
 def test_datum_is_retaken_at_each_group_boundary(client, survey_for):
@@ -196,6 +510,7 @@ def test_datum_is_retaken_at_each_group_boundary(client, survey_for):
             json={"points": survey_for(machine, {"roll": 0.4, "heave": 0.6})},
         )
     )
+    _json(client.client.post("/api/plan/accept", json={}))
 
     datums = {}
     for _ in range(_json(client.client.get("/api/session"))["session"]["n_steps"]):
@@ -225,6 +540,7 @@ def test_session_survives_a_restart(client, cfg, survey_for):
             "/api/survey", json={"points": survey_for(G.machine("MS"), {"roll": 0.4})}
         )
     )
+    _json(client.client.post("/api/plan/accept", json={}))
     _json(client.client.get("/api/encoders"))
     sid = _json(client.client.get("/api/session"))["session"]["id"]
     datum = dict(client.service.session.datum)
@@ -236,7 +552,7 @@ def test_session_survives_a_restart(client, cfg, survey_for):
         assert resumed["session"]["id"] == sid
         assert fresh.session is not None
         assert fresh.session.datum == datum
-        assert fresh.session.datum_group == "flatten"
+        assert fresh.session.datum_group == "combined"  # combine_vertical defaults on
 
 
 def test_stop_can_save_a_partial_report(client, cfg, survey_for):
@@ -293,6 +609,7 @@ def test_export_returns_whole_sessions_not_summaries(client, survey_for):
             "/api/survey", json={"points": survey_for(G.machine("MS"), {"heave": 0.5})}
         )
     )
+    _json(client.client.post("/api/plan/accept", json={}))
     _json(client.client.post("/api/session/close"))
 
     out = _json(client.client.get("/api/sessions/export"))

@@ -34,6 +34,31 @@ from . import geometry as G
 SOFTWARE_VERSION = __version__
 DEFAULT_GATE_MM = 0.010  # per-encoder "on target" gate
 
+#: Axes each move-group's own plan actually solves for - see
+#: Session.estimate_live_pose for why this matters. "horizontal" has no
+#: intermediate/final split (sway/surge go straight to final targets, see
+#: geometry.build_steps), so it has no equivalent asymmetric-mid-group risk,
+#: but is listed anyway for a consistent, exhaustive mapping.
+#:
+#: "warp" is included for every VERTICAL group (flatten/heave/combined), not
+#: just heave/combined (the only ones whose own plan deliberately targets a
+#: nonzero warp correction) - any group driving vertical-encoder pairs
+#: sequentially can show transient, asymmetric warp content mid-group purely
+#: from one pair being done and the other not (the same cross-shift effect
+#: that affects roll/pitch/heave themselves), so the live full-body warp
+#: estimate can't be trusted there either. horizontal never touches the
+#: vertical encoders at all, so warp isn't excluded for it - whatever warp
+#: content a vertical group already finished is real signal there, not
+#: mid-group noise. predicted_pose_change only recovers a "warp" key at all
+#: for a girder type with FEA vencoder compliance data (see its docstring) -
+#: for one without, this set membership is simply never consulted for warp.
+_GROUP_AXES = {
+    "flatten": {"roll", "pitch", "warp"},
+    "heave": {"heave", "warp"},
+    "combined": {"roll", "pitch", "heave", "warp"},
+    "horizontal": {"sway", "surge", "yaw"},
+}
+
 
 def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
@@ -129,9 +154,10 @@ class Session:
         operator: str,
         pairing: str = "end",
         first_idx: int = 0,
-        combine_vertical: bool = False,
+        combine_vertical: bool = True,
         gate_mm: float = DEFAULT_GATE_MM,
         tol_overrides: dict | None = None,
+        heave_bias_mm: float | None = None,
         bay: str = "",
         sid: str | None = None,
     ):
@@ -152,6 +178,14 @@ class Session:
         self.machine = G.machine(gtype)
         self.geometry_revision = G.GEOMETRY_REVISION
         self.software_version = SOFTWARE_VERSION
+
+        # Bare-girder heave pre-set (see geometry.compute_plan and
+        # _fea_data.SAG_BIAS_MM). None means "use this girder type's usual
+        # recommendation"; resolved to a concrete number now so the record
+        # shows exactly what was used, not "default".
+        self.heave_bias_mm = (
+            self.machine.sag_bias_mm if heave_bias_mm is None else float(heave_bias_mm)
+        )
 
         self.iteration = 0
         self.phase = (
@@ -197,6 +231,7 @@ class Session:
         temperature: float | None = None,
         temperature_detail: dict | None = None,
         filename: str = "",
+        comment: str = "",
     ) -> dict:
         m = self.machine
         matched, unmatched = G.match_by_proximity(points, m)
@@ -217,6 +252,7 @@ class Session:
             "t": _now(),
             "source": source,
             "filename": filename,
+            "comment": comment.strip(),
             "n_uploaded": len(points),
             "temperature": temperature,
             "temperature_detail": temperature_detail,
@@ -230,7 +266,9 @@ class Session:
             "err": fit.err,
             "points": [list(map(float, p)) for p in points],
             "matched": {k: list(map(float, v)) for k, v in matched.items()},
-            "assessment": G.assess(fit.err, self.tol),
+            "assessment": G.assess(
+                fit.err, self.tol, target={"heave": self.heave_bias_mm}
+            ),
         }
         self.surveys.append(rec)
         if temperature is not None:
@@ -239,25 +277,56 @@ class Session:
         if self.initial_err is None:
             self.initial_err = dict(fit.err)
 
-        # validate the achieved move against the model, for free
-        if self.moves:
-            last = self.moves[-1]
-            if last.get("predicted_pose_change"):
-                prev = self.surveys[-2]["err"] if len(self.surveys) > 1 else None
-                if prev:
-                    actual = {
-                        k: self.current_err[k] - prev[k] for k in self.current_err
-                    }
-                    last["model_check"] = {
-                        "predicted": last["predicted_pose_change"],
-                        "actual": actual,
-                        "residual": {
-                            k: actual[k] - last["predicted_pose_change"].get(k, 0.0)
-                            for k in actual
-                        },
-                    }
+        # Validate the achieved moves against the model, for free. Every move
+        # made since the PREVIOUS survey contributed to the change this
+        # survey now measures - not just the last one - so the prediction
+        # combines all of them. Comparing the whole actual change against
+        # only the final step's own (typically small, single-axis) predicted
+        # change was a real bug: a heave correction made two steps ago would
+        # show up entirely as "residual" once the last step was, say, a
+        # surge move that predicts ~0 heave change of its own.
+        #
+        # But a flat SUM over every move is wrong too: moves within one
+        # group share a single datum (see capture_datum), so each move's
+        # own `predicted_pose_change` is the CUMULATIVE change implied by
+        # the encoders relative to that shared datum, not an incremental
+        # delta since the previous move in the same group - summing both
+        # of a group's steps double-counts almost the whole group's
+        # contribution. Only the LAST move in each group reflects that
+        # group's true total (same reasoning as estimate_live_pose's
+        # last-move-per-group handling for step-back).
+        this_iter_moves = [
+            mv for mv in self.moves if mv["iteration"] == self.iteration - 1
+        ]
+        if this_iter_moves:
+            prev = self.surveys[-2]["err"] if len(self.surveys) > 1 else None
+            if prev:
+                last_by_group: dict[str, dict] = {}
+                for mv in this_iter_moves:
+                    last_by_group[mv.get("datum_group") or ""] = mv
+                predicted: dict[str, float] = {}
+                for mv in last_by_group.values():
+                    for k, v in (mv.get("predicted_pose_change") or {}).items():
+                        predicted[k] = predicted.get(k, 0.0) + v
+                actual = {k: self.current_err[k] - prev[k] for k in self.current_err}
+                this_iter_moves[-1]["model_check"] = {
+                    "steps": [mv["step"] for mv in this_iter_moves],
+                    "predicted": predicted,
+                    "actual": actual,
+                    "residual": {
+                        k: actual[k] - predicted.get(k, 0.0) for k in actual
+                    },
+                }
 
-        self.phase = "solved" if not rec["assessment"]["in_tolerance"] else "complete"
+        # "solved" is a real waiting state: the pose error is shown, but the
+        # plan is not built until the operator explicitly accepts it (see
+        # accept_plan) - a technician should see and confirm what's about to
+        # be commanded before targets appear, not have it happen the instant
+        # a fit comes back. This is true even when the survey is already IN
+        # tolerance: the session is marked complete either way (below), but
+        # the operator can still choose to accept the survey and generate a
+        # further round of (small) correction steps rather than stop here.
+        self.phase = "solved"
         self.log(
             "survey",
             iteration=self.iteration,
@@ -266,14 +335,30 @@ class Session:
             warnings=fit.warnings,
             err=fit.err,
         )
-        if self.phase == "solved":
-            self.solve()
-        else:
+        if rec["assessment"]["in_tolerance"]:
             self.status = "complete"
             self.log("converged", err=fit.err)
+        elif self.status == "complete":
+            # A prior survey converged and marked us complete, but this new
+            # one (e.g. the operator re-checking, or picking a different
+            # file) is out of tolerance again - we're back in play.
+            self.status = "active"
         return rec
 
     # -- planning --------------------------------------------------------
+    def accept_plan(self) -> dict:
+        """Operator confirms the survey; build and enter the move plan.
+
+        The only caller-facing difference from calling :meth:`solve` directly
+        is the guard: this is the "solved" -> "moving" transition a technician
+        triggers on purpose, so refuse it from any other phase rather than
+        silently rebuilding whatever plan happens to exist (that's what
+        :meth:`set_options`/:meth:`step_back` are for, mid-move).
+        """
+        if self.phase != "solved":
+            raise RuntimeError(f"nothing to accept in phase {self.phase!r}")
+        return self.solve()
+
     def solve(self) -> dict:
         if self.current_err is None:
             raise RuntimeError("no survey yet")
@@ -283,10 +368,17 @@ class Session:
             self.pairing,
             self.first_idx,
             self.combine_vertical,
+            heave_bias_mm=self.heave_bias_mm,
         )
         self.step_index = 0
         self.clear_datum()  # targets are new; the old reference is meaningless
         self.phase = "moving"
+        if self.status == "complete":
+            # Building a plan means real moves are about to happen again -
+            # including the "already in tolerance, refine further anyway"
+            # path add_survey now allows. A session mid-move is active,
+            # whatever an earlier survey's tolerance verdict said.
+            self.status = "active"
         self.log(
             "solve",
             n_steps=len(self.plan["steps"]),
@@ -297,7 +389,8 @@ class Session:
 
     def set_options(self, **kw):
         """Change pairing / first pair / combine mode, then re-solve."""
-        for k in ("pairing", "first_idx", "combine_vertical", "gate_mm"):
+        keys = ("pairing", "first_idx", "combine_vertical", "gate_mm", "heave_bias_mm")
+        for k in keys:
             if k in kw and kw[k] is not None:
                 setattr(self, k, kw[k])
         if "tol_overrides" in kw and kw["tol_overrides"]:
@@ -308,6 +401,7 @@ class Session:
             first_idx=self.first_idx,
             combine_vertical=self.combine_vertical,
             gate_mm=self.gate_mm,
+            heave_bias_mm=self.heave_bias_mm,
         )
         if self.current_err is not None:
             self.solve()
@@ -380,8 +474,15 @@ class Session:
             }
             worst = max(worst, abs(float(e)))
 
+        # Compared against the STEP'S OWN expected parasitic content, not zero:
+        # a warp-corrected heave move deliberately targets nonzero WARP (see
+        # compute_plan), so the gate must catch UNEXPECTED parasitic content
+        # (racking, binding) rather than flag every warp correction as a fault.
         vec = [(readings.get(e) or {}).get("relative") or 0.0 for e in G.ENCODER_IDS]
-        warp, stretch = self.machine.parasitic_of(vec)
+        warp_raw, stretch_raw = self.machine.parasitic_of(vec)
+        exp_vec = [step["expected"].get(e, 0.0) for e in G.ENCODER_IDS]
+        warp_exp, stretch_exp = self.machine.parasitic_of(exp_vec)
+        warp, stretch = warp_raw - warp_exp, stretch_raw - stretch_exp
         par_ok = bool(abs(warp) <= G.WARP_STOP and abs(stretch) <= G.STRETCH_STOP)
 
         # A reading's age is deliberately not part of this. The encoders are
@@ -424,6 +525,7 @@ class Session:
         override: bool = False,
         reason: str = "",
         operator: str = "",
+        comment: str = "",
     ) -> dict:
         step = self.current_step()
         if step is None:
@@ -451,6 +553,8 @@ class Session:
             "override": bool(override and not chk["ok"]),
             "override_reason": reason if (override and not chk["ok"]) else "",
             "override_by": operator or self.operator,
+            "comment": comment.strip(),
+            "reopened": False,
             "predicted_pose_change": G.predicted_pose_change(
                 self.machine, {k: v for k, v in achieved.items() if v is not None}
             ),
@@ -484,6 +588,90 @@ class Session:
             self.phase = "verify"
         return {"accepted": True, "check": chk, "move": rec}
 
+    def estimate_live_pose(self, readings: dict[str, dict]) -> dict:
+        """Best current estimate of the pose error, for :meth:`step_back`.
+
+        ``current_err`` only ever changes on a new survey, and a live reading's
+        ``relative`` value is only meaningful against the CURRENT datum — so
+        neither one alone sees a correction already completed in an EARLIER,
+        different group (flatten vs heave vs horizontal): that group's datum
+        has since been superseded, so it reads as zero in a live poll even
+        though the girder genuinely moved. Add both together: completed moves
+        in a different datum group since the last survey (via each move's own
+        stored ``predicted_pose_change``, since their datum is gone), plus
+        whatever the live reading shows for progress in the CURRENT group.
+
+        Filtered by ``iteration``, not by comparing timestamps: ``t`` has only
+        second resolution, so a move made in the same second as the survey
+        that triggered it (routine in an automated demo, and not impossible by
+        hand either) would otherwise be wrongly treated as pre-dating it.
+
+        Only the LAST move in each other group is used, not a sum of every
+        move there: every move within one group is measured from the SAME
+        shared datum (see the module docstring), so a later move's own
+        ``achieved`` already includes an earlier one's progress — summing
+        both would double-count it.
+
+        The live reading's OWN GROUP's axes (``_GROUP_AXES``) are excluded
+        from what it contributes, and left exactly as ``current_err`` already
+        has them. This looks backwards — surely a live reading tells you
+        MORE about the group you're actually standing in? — but every group's
+        own plan is a UNIFORM, no-differential move (heave is a pure Y shift,
+        flatten a pure tilt, never both at once): it cannot express "the first
+        pair is done, the second still needs to move X more". Reopening a
+        group after only one of its two pair-moves has completed leaves the
+        girder in a genuinely asymmetric state, and no single scalar value fed
+        into that group's uniform formula reproduces it — one pair or the
+        other always ends up wrong. The already-completed pair's target was
+        proven correct when it passed its own gate; leaving that axis alone
+        (falling back to whatever it was solved from originally) reproduces
+        that same, still-correct plan for the group, rather than corrupting
+        it with a number a uniform formula can't actually use correctly.
+        Cross-group information has no such problem — a DIFFERENT, fully
+        finished group's own recorded correction is exact, which is what
+        ``accumulated`` above already uses.
+        """
+        last_by_group: dict[str, dict] = {}
+        for mv in self.moves:
+            if mv.get("iteration") != self.iteration:
+                continue  # from a superseded iteration, before the last survey
+            grp = mv.get("datum_group") or ""
+            if grp == self.datum_group:
+                continue  # same datum as now - already in the live reading
+            last_by_group[grp] = mv.get("predicted_pose_change") or {}
+
+        accumulated: dict[str, float] = {}
+        for pose_change in last_by_group.values():
+            for k, v in pose_change.items():
+                accumulated[k] = accumulated.get(k, 0.0) + v
+
+        vec = {e: (readings.get(e) or {}).get("relative") for e in G.ENCODER_IDS}
+        vec = {k: v for k, v in vec.items() if v is not None}
+        change = G.predicted_pose_change(self.machine, vec)
+        own_axes = _GROUP_AXES.get(self.datum_group) or set()
+        change = {k: v for k, v in change.items() if k not in own_axes}
+
+        base = self.current_err or {}
+        keys = set(base) | set(accumulated) | set(change)
+        return {
+            k: base.get(k, 0.0) + accumulated.get(k, 0.0) + change.get(k, 0.0)
+            for k in keys
+        }
+
+    def _flag_reopened(self, step_id: str) -> None:
+        """Mark the most recent completed move for this step as reopened.
+
+        Called right before a step is stepped back into - it was already
+        confirmed complete once, and is about to be redone. The report
+        highlights any move flagged this way, since it's not the entry that
+        should be read as the step's final outcome (the fresh move recorded
+        once it's redone is).
+        """
+        for mv in reversed(self.moves):
+            if mv["iteration"] == self.iteration and mv["step"] == step_id:
+                mv["reopened"] = True
+                return
+
     def step_back(self, live_err: dict | None = None) -> dict:
         """Re-open the previous step.
 
@@ -492,13 +680,35 @@ class Session:
         """
         if self.step_index == 0:
             return {"ok": False, "reason": "already at the first step"}
-        self.step_index -= 1
+        target_index = self.step_index - 1
+        self._flag_reopened(self.steps[target_index]["id"])
         self.phase = "moving"
         if live_err:
+            # solve() (below) unconditionally clears the datum, which is
+            # right when landing on a group we've fully exited - its targets
+            # are recomputed as "what's left from here", so a fresh datum
+            # taken right now is exactly the right reference. But if we're
+            # only stepping back WITHIN the group we're still inside (one
+            # pair done, the other not), that group's datum was captured
+            # once at group entry and its targets - per estimate_live_pose -
+            # come back unchanged; recapturing the datum here would zero out
+            # the progress already made and make an already-achieved pair
+            # look like it needs the full original move again.
+            old_datum, old_datum_group = dict(self.datum), self.datum_group
             self.current_err = dict(live_err)
+            # solve() rebuilds the whole plan and unconditionally resets
+            # step_index to 0 - restore the step we actually meant to land
+            # on (clamped in case the new plan is somehow shorter).
             self.solve()
+            self.step_index = min(target_index, len(self.steps) - 1)
+            new_step = self.current_step()
+            same_group = new_step is not None and new_step["group"] == old_datum_group
+            if old_datum_group and same_group:
+                self.datum = old_datum
+                self.datum_group = old_datum_group
             self.log("step_back", recomputed=True, step=self.step_index)
             return {"ok": True, "recomputed": True, "step": self.current_step()}
+        self.step_index = target_index
         self.log("step_back", recomputed=False, step=self.step_index)
         return {
             "ok": True,
@@ -572,6 +782,7 @@ class Session:
             "first_idx": self.first_idx,
             "combine_vertical": self.combine_vertical,
             "gate_mm": self.gate_mm,
+            "heave_bias_mm": self.heave_bias_mm,
             "tol": self.tol,
             "geometry_revision": self.geometry_revision,
             "software_version": self.software_version,
@@ -599,6 +810,12 @@ class Session:
             first_idx=d.get("first_idx", 0),
             combine_vertical=d.get("combine_vertical", False),
             gate_mm=d.get("gate_mm", DEFAULT_GATE_MM),
+            # A record from before this existed has no key here, and its
+            # already-computed plan (if any) was necessarily made with no
+            # bias -- default to 0.0, not this type's current recommendation,
+            # so a resumed old session stays consistent with what it already
+            # shows rather than silently reinterpreting it.
+            heave_bias_mm=d.get("heave_bias_mm", 0.0),
             bay=d.get("bay", ""),
             sid=d["id"],
         )
@@ -645,13 +862,18 @@ class Session:
             "first_idx": self.first_idx,
             "combine_vertical": self.combine_vertical,
             "gate_mm": self.gate_mm,
+            "heave_bias_mm": self.heave_bias_mm,
             "tol": self.tol,
             "datum": self.datum,
             "datum_group": self.datum_group,
             "initial_err": self.initial_err,
             "current_err": self.current_err,
             "assessment": (
-                G.assess(self.current_err, self.tol) if self.current_err else None
+                G.assess(
+                    self.current_err, self.tol, target={"heave": self.heave_bias_mm}
+                )
+                if self.current_err
+                else None
             ),
             "n_surveys": len(self.surveys),
             "n_moves": len(self.moves),

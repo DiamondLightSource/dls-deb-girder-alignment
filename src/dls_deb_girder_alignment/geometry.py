@@ -27,6 +27,7 @@ from dataclasses import asdict, dataclass, field
 
 import numpy as np
 
+from ._fea_data import FEA_COMPLIANCE, SAG_BIAS_MM
 from ._geom_data import GEOM, GEOMETRY_REVISION
 
 # --------------------------------------------------------------------------
@@ -93,6 +94,18 @@ class Machine:
 
         self.J = self._build_jacobian()
         self.parasitic = self._parasitic_modes()
+
+        # Warp: the one non-rigid vertical jack DOF (4 jacks - 3 rigid DOF).
+        # warp_pattern is pure geometry (needs no FEA); fea is None for a type
+        # with no FEA compliance data, and every warp code path falls back to
+        # today's rigid-only behaviour in that case.
+        self.warp_pattern = self._warp_pattern()
+        self.fea = FEA_COMPLIANCE.get(gtype)
+
+        # Recommended bare-girder heave pre-set, to reduce the worst-case
+        # magnet-adjuster travel once the girder sags under full magnet load.
+        # 0.0 for a type with no bare-vs-loaded FEA yet. See _fea_data.py.
+        self.sag_bias_mm = SAG_BIAS_MM.get(gtype, 0.0)
 
     # -- labelling -------------------------------------------------------
     def _tag(self, p: np.ndarray) -> str:
@@ -162,6 +175,37 @@ class Machine:
         _, _, vh = np.linalg.svd(self.J.T)
         return vh[rank:]  # (2, 8)
 
+    def _warp_pattern(self) -> dict[str, float]:
+        """Geometric null-space jack pattern for the non-rigid vertical DOF.
+
+        4 jacks, 3 rigid vertical DOF (heave, pitch, roll) -> exactly one jack
+        combination — the diagonal checkerboard — that no rigid plane through
+        the jacks can reproduce. This is pure geometry, from the jacks' own
+        (X, Z) positions; no FEA is needed for the DIRECTION, only for how much
+        the girder actually bends when it's commanded (see ``_fea_data.py``).
+
+        Normalised so ``bearings[0]`` (J_US_IN) is exactly +1 — SVD sign is
+        otherwise arbitrary, and FEA_COMPLIANCE's gains were derived under
+        this same convention, so this fixes it rather than leaving it to
+        chance at runtime.
+        """
+        a = np.array([[1.0, b["p"][0], b["p"][2]] for b in self.bearings])
+        u, _, _ = np.linalg.svd(a)
+        n = u[:, -1]
+        n = n / n[0]
+        return {b["id"]: float(w) for b, w in zip(self.bearings, n, strict=True)}
+
+    def fea_gain(self, kind: str, name: str) -> float | None:
+        """FEA warp-compliance gain (mm shape / mm of warp_pattern), or None.
+
+        None means: this point, or this whole girder type, has no FEA warp
+        characterisation yet — callers must treat that as "behave exactly as
+        the rigid-only model", not as a gain of zero.
+        """
+        if self.fea is None:
+            return None
+        return self.fea[kind].get(name)
+
     # -- frame helpers ---------------------------------------------------
     def to_master(self, err: dict) -> np.ndarray:
         """Machine-frame pose (mm / mrad) -> master [t(3), theta(3) rad]."""
@@ -219,6 +263,7 @@ class Machine:
             ],
             "fids": {k: v.tolist() for k, v in self.fids.items()},
             "revision": GEOMETRY_REVISION,
+            "sag_bias_mm": self.sag_bias_mm,
         }
 
 
@@ -244,6 +289,9 @@ class FitResult:
     unmatched: list[list[float]]
     residuals: dict[str, float]
     warnings: list[str] = field(default_factory=list)
+    warp_modeled: bool = False
+    """Whether err["warp"] came from an FEA-backed fit (True) or is an
+    unmodelled 0.0 because this girder type has no FEA compliance data yet."""
 
     def as_dict(self):
         d = asdict(self)
@@ -277,36 +325,47 @@ def match_by_proximity(
 
 
 def fit_pose(measured: dict[str, Sequence[float]], m: Machine) -> FitResult:
-    """Weighted small-angle least-squares rigid fit, nominal -> measured."""
+    """Weighted small-angle least-squares rigid fit, nominal -> measured.
+
+    Adds a 7th unknown — warp amplitude, in mm of ``Machine.warp_pattern``
+    jack command — when the girder type has FEA warp compliance data for
+    enough of the matched fiducials. Without that, this is exactly the
+    original 6-DOF rigid fit: warp is unmodelled (0.0), not assumed zero.
+    """
     names = [n for n in m.fids if n in measured]
     if len(names) < 3:
         raise ValueError(f"need >=3 matched points, got {len(names)}")
 
-    ata = np.zeros((6, 6))
-    atb = np.zeros(6)
+    shape = {n: g for n in names if (g := m.fea_gain("fids", n)) is not None}
+    use_warp = len(shape) >= 3
+    ncol = 7 if use_warp else 6
+
+    ata = np.zeros((ncol, ncol))
+    atb = np.zeros(ncol)
     for n in names:
         nom = m.fids[n]
         r = nom - m.p0
         d = np.asarray(measured[n], float) - nom
         rows = np.array(
             [
-                [1, 0, 0, 0, r[2], -r[1]],
-                [0, 1, 0, -r[2], 0, r[0]],
-                [0, 0, 1, r[1], -r[0], 0],
+                [1, 0, 0, 0, r[2], -r[1], 0.0],
+                [0, 1, 0, -r[2], 0, r[0], shape.get(n, 0.0)],
+                [0, 0, 1, r[1], -r[0], 0, 0.0],
             ],
             float,
-        )
+        )[:, :ncol]
         ata += rows.T @ rows
         atb += rows.T @ d
 
     x = np.linalg.solve(ata, atb)
-    t, th = x[:3], x[3:]
+    t, th = x[:3], x[3:6]
+    warp = float(x[6]) if use_warp else 0.0
 
     resid, ss, mx = {}, 0.0, 0.0
     for n in names:
         nom = m.fids[n]
         r = nom - m.p0
-        pred = t + np.cross(th, r)
+        pred = t + np.cross(th, r) + np.array([0.0, shape.get(n, 0.0) * warp, 0.0])
         e = np.asarray(measured[n], float) - nom - pred
         d = float(np.linalg.norm(e))
         resid[n] = d
@@ -320,6 +379,7 @@ def fit_pose(measured: dict[str, Sequence[float]], m: Machine) -> FitResult:
         "roll": float(th @ m.jz) * 1000.0,
         "pitch": float(th @ m.jx) * 1000.0,
         "yaw": float(th @ m.jy) * 1000.0,
+        "warp": warp,
     }
     rms = math.sqrt(ss / len(names))
 
@@ -343,6 +403,7 @@ def fit_pose(measured: dict[str, Sequence[float]], m: Machine) -> FitResult:
         unmatched=[],
         residuals=resid,
         warnings=warn,
+        warp_modeled=use_warp,
     )
 
 
@@ -393,15 +454,36 @@ def _plane_fit(m: Machine, heights: dict[str, float]):
 
 
 def _enc_from_heights(m: Machine, heights: dict[str, float]) -> dict[str, float]:
+    """Encoder targets for a set of commanded bearing heights.
+
+    ``heights`` decomposes uniquely into a rigid plane (heave/pitch/roll,
+    reproduced exactly by ``_plane_fit``) plus a warp-pattern component — the
+    two are orthogonal complements of the 4-jack space, so this is exact for
+    a full 4-jack command AND for a partial one (e.g. only one pair moved so
+    far), not an approximation. The warp part only gets a non-rigid encoder
+    response where FEA compliance data exists (see ``_fea_data.py``); a
+    girder type or point without it falls back to the plane-only prediction,
+    unchanged from before this existed.
+    """
     a, b, c = _plane_fit(m, heights)
+    warp_amt = 0.0
+    if m.fea is not None:
+        wp = np.array([m.warp_pattern[bd["id"]] for bd in m.bearings])
+        h = np.array([heights[bd["id"]] for bd in m.bearings])
+        warp_amt = float(h @ wp) / float(wp @ wp)
     out = {}
     for e in m.venc:
         p = e["p"]
-        out[e["id"]] = float(-(a + b * p[0] + c * p[2]))  # -Y = +count
+        rigid = -(a + b * p[0] + c * p[2])  # -Y = +count
+        gain = m.fea_gain("venc", e["id"]) if warp_amt else None
+        extra = -(warp_amt * gain) if gain is not None else 0.0
+        out[e["id"]] = float(rigid + extra)
     return out
 
 
-def pair_plan(m: Machine, sub: dict, pairing: str, first_idx: int) -> dict:
+def pair_plan(
+    m: Machine, sub: dict, pairing: str, first_idx: int, warp: float = 0.0
+) -> dict:
     """Vertical move split into two sequential pair moves.
 
     Each vertical encoder sits ~325 mm along-axis from its own bearing, so moving
@@ -410,6 +492,12 @@ def pair_plan(m: Machine, sub: dict, pairing: str, first_idx: int) -> dict:
     MOVED LANDS ON FINAL TARGETS; the first pair aims at a compensated
     intermediate value.  This applies to ANY sequential pair move - flatten,
     heave, or the two combined.
+
+    ``warp`` is the fitted warp amplitude (mm, from ``fit_pose``) to correct as
+    part of THIS move — pass it for heave / combined, not flatten (see
+    ``compute_plan``). It adds a checkerboard jack delta on top of the rigid
+    heights, sized to null the fitted warp out; ``_enc_from_heights`` folds in
+    the matching FEA-compliant encoder response, when this girder type has one.
     """
     v = -m.to_master(
         {
@@ -422,7 +510,8 @@ def pair_plan(m: Machine, sub: dict, pairing: str, first_idx: int) -> dict:
     dh = {}
     for b in m.bearings:
         r = b["p"] - m.p0
-        dh[b["id"]] = float(t[1] + th[2] * r[0] - th[0] * r[2])
+        rigid = t[1] + th[2] * r[0] - th[0] * r[2]
+        dh[b["id"]] = float(rigid - warp * m.warp_pattern[b["id"]])
 
     e_final = _enc_from_heights(m, dh)
     groups = pair_groups(m, pairing)
@@ -438,6 +527,7 @@ def pair_plan(m: Machine, sub: dict, pairing: str, first_idx: int) -> dict:
     # this lets the UI show EXPECTED values for the monitored encoders, so a
     # technician can tell "moved as expected" from "moved unexpectedly".
     return {
+        "warp": warp,
         "first": {
             "label": first["label"],
             "enc": first["enc"],
@@ -475,13 +565,35 @@ def compute_plan(
     pairing: str = "end",
     first_idx: int = 0,
     combine_vertical: bool = False,
+    heave_bias_mm: float | None = None,
 ) -> dict:
     """Full move plan.
 
     Sequencing is set by COUPLING, not by tolerance priority:
       vertical first (roll creeps X/Y via the geometric lever), horizontal last
       (nearly one-way coupled, so it absorbs the creep without re-breaking it).
+
+    Warp correction (see ``fit_pose``) rides along with whichever vertical step
+    actually sets heave — "heave" alone, or "combined" — never "flatten", since
+    warp is a jack-only phenomenon and flatten is roll+pitch with no heave
+    content. It is unmodelled (0.0) unless this girder type has FEA compliance
+    data, in which case it defaults ON: correcting it costs nothing extra to
+    command, since it's folded into jack targets the technician is already
+    setting for the heave move.
+
+    ``heave_bias_mm`` intentionally leaves the girder ``heave_bias_mm`` above
+    nominal rather than driving heave error fully to zero — a deliberate
+    bare-girder pre-set (see ``_fea_data.SAG_BIAS_MM``) that reduces the
+    worst-case magnet-adjuster travel once the girder sags under full magnet
+    load; it does not change any magnet's final position, since magnets are
+    aligned to nominal individually after full loading. ``None`` (the
+    default) uses ``m.sag_bias_mm`` — 0.0 for a girder type with no bare-vs-
+    loaded FEA data. Pass 0.0 explicitly to align this girder to true
+    nominal regardless of the type's usual recommendation.
     """
+    warp = err.get("warp", 0.0)
+    bias = m.sag_bias_mm if heave_bias_mm is None else float(heave_bias_mm)
+    heave = err.get("heave", 0.0) - bias
     horiz_vec = -m.to_master(
         {
             "sway": err.get("sway", 0.0),
@@ -500,22 +612,24 @@ def compute_plan(
         "first_idx": first_idx,
         "combine_vertical": combine_vertical,
         "cross_shift_ratio": cross_shift_ratio(m),
+        "heave_bias_mm": bias,
         "flatten": pair_plan(
             m,
             {"roll": err.get("roll", 0.0), "pitch": err.get("pitch", 0.0)},
             pairing,
             first_idx,
         ),
-        "heave": pair_plan(m, {"heave": err.get("heave", 0.0)}, pairing, first_idx),
+        "heave": pair_plan(m, {"heave": heave}, pairing, first_idx, warp=warp),
         "combined": pair_plan(
             m,
             {
                 "roll": err.get("roll", 0.0),
                 "pitch": err.get("pitch", 0.0),
-                "heave": err.get("heave", 0.0),
+                "heave": heave,
             },
             pairing,
             first_idx,
+            warp=warp,
         ),
         "horizontal": {hid: float(v) for hid, v in zip(HORZ_IDS, horiz, strict=True)},
         "horizontal_after_sway": {
@@ -538,6 +652,14 @@ def build_steps(plan: dict, combine_vertical: bool) -> list[dict]:
             b = blk[stage]
             exp = dict(b["all"])  # all four vertical encoders
             exp.update(dict.fromkeys(HORZ_IDS, 0.0))  # stages don't move here
+            note = (
+                "stop at the intermediate value — it settles to final "
+                "once the second pair moves"
+                if stage == "first"
+                else "final targets"
+            )
+            if blk.get("warp"):
+                note += " — includes a warp (twist) correction on the jacks"
             steps.append(
                 {
                     "id": f"{name}_{stage}",
@@ -548,12 +670,7 @@ def build_steps(plan: dict, combine_vertical: bool) -> list[dict]:
                     "targets": dict(zip(b["enc"], b[tgt_key], strict=True)),
                     "final_targets": dict(zip(b["enc"], b["final"], strict=True)),
                     "expected": exp,
-                    "note": (
-                        "stop at the intermediate value — it settles to final "
-                        "once the second pair moves"
-                        if stage == "first"
-                        else "final targets"
-                    ),
+                    "note": note,
                 }
             )
 
@@ -628,14 +745,29 @@ def tolerances(overrides: dict | None = None) -> dict[str, float]:
     return tol
 
 
-def assess(err: dict, tol: dict[str, float]) -> dict:
+def assess(
+    err: dict, tol: dict[str, float], target: dict[str, float] | None = None
+) -> dict:
+    """Gate ``err`` against ``tol``, relative to ``target`` (default: nominal).
+
+    ``target`` lets an axis have a deliberately nonzero "on target" value —
+    the heave pre-set (see ``compute_plan``'s ``heave_bias_mm``) is the only
+    current use: the girder is meant to sit away from true nominal, so being
+    off *raw* zero by the bias must not itself read as out of tolerance.
+    ``value`` stays the raw error either way, for an honest as-surveyed
+    record; only ``frac``/``status`` are computed against the residual.
+    """
+    target = target or {}
     out, worst = {}, 0.0
     for k in AXIS_KEYS:
         v = float(err.get(k, 0.0))
-        frac = abs(v) / tol[k] if tol[k] else 0.0
+        t = float(target.get(k, 0.0))
+        resid = v - t
+        frac = abs(resid) / tol[k] if tol[k] else 0.0
         worst = max(worst, frac)
         out[k] = {
             "value": v,
+            "target": t,
             "tol": tol[k],
             "frac": frac,
             "status": "ok" if frac <= 0.85 else ("warn" if frac <= 1.0 else "bad"),
@@ -648,11 +780,39 @@ def predicted_pose_change(m: Machine, achieved: dict[str, float]) -> dict:
 
     Comparing this against the next survey validates the geometric model on real
     hardware at no extra cost, and feeds the residual-correction hook.
+
+    Also recovers warp amplitude (mm of ``Machine.warp_pattern``) when the
+    girder type has FEA vencoder compliance data for enough of the vertical
+    encoders — the same 7-unknowns-at-once idea as ``fit_pose``'s survey-side
+    recovery, just worked in encoder space: augment the rigid 6-column design
+    matrix (``m.J``) with a 7th column giving each vertical encoder's own
+    warp response (``-fea_gain("venc", eid)``, same sign convention as
+    ``_enc_from_heights``; horizontal encoders get 0 - warp has negligible
+    effect on them), and solve all 7 unknowns together. Without that data
+    this is exactly the original 6-DOF fit — no ``"warp"`` key at all, not a
+    false 0.0, so callers (``session.py``'s model-validation accumulation)
+    correctly treat it as "not predicted" via plain dict lookups, the same
+    convention used everywhere else warp is modelled.
     """
     d = np.array([achieved.get(e, 0.0) for e in ENCODER_IDS], float)
-    sol, *_ = np.linalg.lstsq(m.J, d, rcond=None)
-    t, th = sol[:3], sol[3:]
-    return {
+
+    gains = {eid: m.fea_gain("venc", eid) for eid in VERT_IDS}
+    known = {eid: g for eid, g in gains.items() if g is not None}
+    use_warp = m.fea is not None and len(known) >= 3
+
+    if use_warp:
+        warp_col = np.array(
+            [-known.get(eid, 0.0) for eid in VERT_IDS] + [0.0] * len(HORZ_IDS)
+        )
+        design = np.column_stack([m.J, warp_col])
+        sol, *_ = np.linalg.lstsq(design, d, rcond=None)
+        t, th, warp = sol[:3], sol[3:6], float(sol[6])
+    else:
+        sol, *_ = np.linalg.lstsq(m.J, d, rcond=None)
+        t, th = sol[:3], sol[3:]
+        warp = None
+
+    out = {
         "sway": float(t @ m.jx),
         "heave": float(t @ m.jy),
         "surge": float(t @ m.jz),
@@ -660,3 +820,6 @@ def predicted_pose_change(m: Machine, achieved: dict[str, float]) -> dict:
         "pitch": float(th @ m.jx) * 1000.0,
         "yaw": float(th @ m.jy) * 1000.0,
     }
+    if warp is not None:
+        out["warp"] = warp
+    return out

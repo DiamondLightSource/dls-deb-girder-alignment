@@ -109,12 +109,6 @@ def test_unknown_serials_are_simply_absent(tmp_path):
     assert serials == {"DLS9999999": {"type": "MS", "notes": ""}}
 
 
-def test_zero_suffixes_are_configurable_site_data(example_config):
-    cfg = config.load(example_config)
-    assert cfg.zero_setpoint_suffix == "_SP"
-    assert cfg.zero_process_suffix == "_ZCALC.PROC"
-
-
 # ---------------------------------------------------------------------------
 # Channel Access settings
 #

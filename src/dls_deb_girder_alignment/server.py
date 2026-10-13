@@ -91,13 +91,7 @@ class Service:
         self.demo = demo
         backend = epics_io.make_backend(demo=demo)
         self.backend = backend
-        self.enc = epics_io.EncoderService(
-            cfg.pv_map,
-            backend,
-            cfg.scale,
-            zero_setpoint_suffix=cfg.zero_setpoint_suffix,
-            zero_process_suffix=cfg.zero_process_suffix,
-        )
+        self.enc = epics_io.EncoderService(cfg.pv_map, backend, cfg.scale)
         self.temp = epics_io.TemperatureService(
             cfg.sensor_pvs, backend, cfg.max_spread_c
         )
@@ -196,6 +190,10 @@ def create_app(service: Service) -> Flask:
                     "proximity_gate_mm": G.PROXIMITY_GATE_MM,
                 },
                 "gate_default_mm": cfg.gate_default_mm,
+                "stale_after_s": cfg.stale_after_s,
+                "mm_per_turn_vertical": cfg.mm_per_turn_vertical,
+                "mm_per_turn_sway": cfg.mm_per_turn_sway,
+                "mm_per_turn_surge": cfg.mm_per_turn_surge,
                 "n_serials": len(cfg.serials),
                 "default_report_dir": str(cfg.reports.resolve()),
             }
@@ -270,9 +268,14 @@ def create_app(service: Service) -> Flask:
                 bay=cfg.bay or cfg.domain,
                 pairing=d.get("pairing", "end"),
                 first_idx=int(d.get("first_idx", 0)),
-                combine_vertical=bool(d.get("combine_vertical", False)),
+                combine_vertical=bool(d.get("combine_vertical", True)),
                 gate_mm=gate,
                 tol_overrides=d.get("tol_overrides"),
+                heave_bias_mm=(
+                    float(d["heave_bias_mm"])
+                    if d.get("heave_bias_mm") is not None
+                    else None
+                ),
             )
             service.store.save(service.session)
         return jsonify({"ok": True, "session": service.session.state()})
@@ -299,6 +302,11 @@ def create_app(service: Service) -> Flask:
                         float(d["gate_mm"]) if d.get("gate_mm") is not None else None
                     ),
                     tol_overrides=d.get("tol_overrides"),
+                    heave_bias_mm=(
+                        float(d["heave_bias_mm"])
+                        if d.get("heave_bias_mm") is not None
+                        else None
+                    ),
                 )
                 service.store.save(s)
             return jsonify({"ok": True, "session": s.state()})
@@ -380,16 +388,19 @@ def create_app(service: Service) -> Flask:
         try:
             s = service.require_session()
             fname = ""
+            comment = ""
             if request.files.get("file"):
                 f = request.files["file"]
                 fname = f.filename or ""
                 pts = parse_points(f.read().decode("utf-8", "replace"))
                 temp = request.form.get("temperature")
+                comment = request.form.get("comment", "")
             else:
                 d = request.get_json(force=True) or {}
                 pts = d.get("points") or parse_points(d.get("text", ""))
                 temp = d.get("temperature")
                 fname = d.get("filename", "")
+                comment = d.get("comment", "")
             if len(pts) < 3:
                 return err("could not read at least 3 XYZ rows from the survey")
 
@@ -406,6 +417,7 @@ def create_app(service: Service) -> Flask:
                     temperature=float(temp) if temp not in (None, "") else None,
                     temperature_detail=detail,
                     filename=fname,
+                    comment=comment or "",
                 )
                 service.store.save(s)
             return jsonify({"ok": True, "survey": rec, "session": s.state()})
@@ -430,6 +442,23 @@ def create_app(service: Service) -> Flask:
         except Exception as exc:
             return err(exc)
 
+    @app.route("/api/plan/accept", methods=["POST"])
+    def api_plan_accept():
+        """Operator confirms the survey and generates the correction steps.
+
+        Deliberately a separate step from the survey upload: a technician
+        should see the pose error and choose to proceed, not have targets
+        appear the instant a fit comes back.
+        """
+        try:
+            s = service.require_session()
+            with service.lock:
+                s.accept_plan()
+                service.store.save(s)
+            return jsonify({"ok": True, "session": s.state()})
+        except Exception as exc:
+            return err(exc)
+
     # -- live encoders ---------------------------------------------------
     @app.route("/api/encoders")
     def api_encoders():
@@ -441,10 +470,22 @@ def create_app(service: Service) -> Flask:
         }
         s = service.session
         if s is not None:
-            vec = [
-                (readings.get(e) or {}).get("relative") or 0.0 for e in G.ENCODER_IDS
-            ]
-            warp, stretch = s.machine.parasitic_of(vec)
+            step = s.current_step()
+            # Relative to the step's own expected parasitic content when one
+            # is active — see check_step: a warp-corrected or intermediate
+            # pair-move target can legitimately be nonzero here, and only the
+            # UNEXPECTED part should read against WARP/STRETCH_STOP. With no
+            # active step there is nothing to compare against, so fall back
+            # to the raw reading vs. zero.
+            chk = s.check_step(readings, step) if step else None
+            if chk is not None:
+                warp, stretch = chk["warp"], chk["stretch"]
+            else:
+                vec = [
+                    (readings.get(e) or {}).get("relative") or 0.0
+                    for e in G.ENCODER_IDS
+                ]
+                warp, stretch = s.machine.parasitic_of(vec)
             out["parasitic"] = {
                 "warp": warp,
                 "stretch": stretch,
@@ -454,50 +495,9 @@ def create_app(service: Service) -> Flask:
                 "stretch_stop": G.STRETCH_STOP,
             }
             out["datum_group"] = s.datum_group
-            step = s.current_step()
-            if step:
-                out["check"] = s.check_step(readings, step)
+            if chk is not None:
+                out["check"] = chk
         return jsonify(out)
-
-    @app.route("/api/encoders/zero", methods=["POST"])
-    def api_zero():
-        """Zero the encoders in the IOC. The only write this tool performs.
-
-        Requires an explicit confirmation from the caller, because it is a
-        hardware datum change that cannot be undone from here and that everything
-        else looking at these PVs will see.
-        """
-        d = request.get_json(force=True) or {}
-        if not d.get("confirm"):
-            return err("zeroing the encoders requires confirm=true")
-        try:
-            with service.lock:
-                res = service.enc.zero_encoders(d.get("encoders"))
-                s = service.session
-                if s is not None:
-                    # The absolute readings have just moved, so a plan datum
-                    # captured before the zero is meaningless. Dropping it makes
-                    # the next encoder poll re-take it against the new frame.
-                    s.clear_datum()
-                    s.log(
-                        "encoder_zero",
-                        encoders=res["encoders"],
-                        errors=res["errors"],
-                        by=d.get("operator", ""),
-                    )
-                    service.store.save(s)
-            if res["errors"]:
-                return jsonify(
-                    {
-                        "ok": False,
-                        "error": "some encoders did not zero: "
-                        + "; ".join(f"{k} ({v})" for k, v in res["errors"].items()),
-                        **res,
-                    }
-                ), 502
-            return jsonify({"ok": True, **res})
-        except Exception as exc:
-            return err(exc)
 
     @app.route("/api/demo/drive", methods=["POST"])
     def api_demo_drive():
@@ -540,6 +540,7 @@ def create_app(service: Service) -> Flask:
                     override=bool(d.get("override")),
                     reason=d.get("reason", ""),
                     operator=d.get("operator", ""),
+                    comment=d.get("comment", ""),
                 )
                 service.store.save(s)
             res["ok"] = True
@@ -550,11 +551,18 @@ def create_app(service: Service) -> Flask:
 
     @app.route("/api/step/back", methods=["POST"])
     def api_step_back():
-        d = request.get_json(force=True) or {}
+        """Re-open the previous step, targets recomputed from the LIVE pose.
+
+        See Session.estimate_live_pose for how "live pose" is worked out — it
+        is not just this poll's readings, since those alone are blind to any
+        correction already completed in an earlier, different move group.
+        """
         try:
             s = service.require_session()
+            readings = service.readings()  # NOT under the lock - see complete_step
             with service.lock:
-                res = s.step_back(live_err=d.get("err"))
+                live_err = s.estimate_live_pose(readings)
+                res = s.step_back(live_err=live_err)
                 service.store.save(s)
             res["ok"] = res.get("ok", True)
             res["session"] = s.state()

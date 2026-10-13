@@ -5,8 +5,9 @@
 # ConfigMap mounted at /epics/ioc/config, which is where the application looks
 # by default. Nothing here ships with the Python package.
 #
-# The tool NEVER commands motion. Its one write is the encoder zero below,
-# which sets a measurement datum in the IOC and is persisted by autosave.
+# The tool NEVER commands motion and has no write path at all. Encoder
+# zeroing (setting a measurement datum in the IOC) is done directly in EPICS,
+# outside this tool.
 #
 # One deployment serves ONE build bay. The bay is selected by `epics.domain`,
 # so the container image is identical for every bay.
@@ -31,13 +32,6 @@ epics:
     SWAY_US:   "US:X"
     SURGE_DS:  "DS:Z"
     SWAY_DS:   "DS:X"
-
-  # Zeroing. "Zero encoders" in the UI writes 0 to <pv><zero_setpoint_suffix>
-  # and then processes <pv><zero_process_suffix>; the IOC computes the offset
-  # and autosave persists it. This is a hardware datum, not a display offset,
-  # and it is not undoable from the tool.
-  zero_setpoint_suffix: "_SP"
-  zero_process_suffix: "_ZCALC.PROC"
 
   # Optional per-encoder engineering-unit scaling (counts -> mm).
   scale: {}
@@ -108,6 +102,17 @@ temperature:
 gate:
   default_mm: 0.010             # per-encoder "on target" gate
   encoder_resolution_mm: 0.001  # the gate is never allowed finer than this
+  stale_after_s: 5.0            # UI flags a reading as stale after this long
+
+# Adjuster-screw linear travel per turn, used only to show the technician an
+# estimated turn count alongside the mm figure on each move step. Set null
+# (not simply omitted) to deliberately disable the estimate for an axis not
+# yet measured on a given rig - the UI omits the turns estimate rather than
+# show a guess.
+adjusters:
+  mm_per_turn_vertical: 0.227
+  mm_per_turn_sway: 0.391190392363964
+  mm_per_turn_surge: 20.0
 
 paths:
   # The serial -> girder type table. Relative to THIS file, so the two travel

@@ -13,11 +13,16 @@ classifiers = [
 ]
 description = "Tool to facilitate alignment of girders in the deb"
 dependencies = [
-    "cothread",   # Channel Access. Linux only, which is fine: this runs in k8s.
+    # Channel Access. Linux only, and cothread ships no wheels for anything
+    # else, so this is deliberately marked Linux-only rather than left to fail
+    # a build: it lets `uv sync` succeed on Windows/macOS dev machines, where
+    # `--demo` is the only mode anyway (see epics_io.make_backend). This runs
+    # in k8s in production, which is always Linux.
+    "cothread; sys_platform == 'linux'",
     # cothread ships no libca of its own: it looks for epicscorelibs, then for
     # $EPICS_BASE. Without this the container has no CA library at all and
     # every deployment silently falls back to the simulator.
-    "epicscorelibs",
+    "epicscorelibs; sys_platform == 'linux'",
     "flask",
     "numpy",
     "pyyaml",

@@ -147,10 +147,6 @@ class Config:
     pv_map: dict[str, str]
     """Encoder id -> fully resolved PV name."""
     scale: dict[str, float]
-    zero_setpoint_suffix: str
-    """Suffix of the zero setpoint PV, written to zero when zeroing."""
-    zero_process_suffix: str
-    """Suffix of the record processed to compute and apply the zero offset."""
     sensor_pvs: list[str]
     """Full temperature sensor PV names for this bay."""
     ca: dict[str, str]
@@ -158,6 +154,10 @@ class Config:
     max_spread_c: float
     gate_default_mm: float
     encoder_resolution_mm: float
+    stale_after_s: float
+    """An encoder reading older than this flags as stale in the UI. Not a
+    fault by itself - see epics_io's module docstring - just a threshold for
+    when to say so on screen."""
     sessions_db: Path
     reports: Path
     models: Path | None
@@ -166,6 +166,15 @@ class Config:
     config_path: Path | None = None
     """Where the configuration was read from, for the startup banner."""
     serials: dict[str, dict[str, str]] = field(default_factory=dict)
+    mm_per_turn_vertical: float = 0.227
+    """Linear travel per adjuster-screw turn, vertical axis. Shown to the
+    technician as an estimated turn count alongside the mm figure."""
+    mm_per_turn_sway: float | None = 0.391190392363964
+    mm_per_turn_surge: float | None = 20.0
+    """Sway/surge turn ratios, shown the same way as the vertical one above.
+    ``None`` omits the turns estimate for that axis entirely rather than
+    show a guess - kept as an option here for a future adjuster type this
+    isn't measured for yet."""
 
     @property
     def device_prefix(self) -> str:
@@ -180,6 +189,7 @@ def load(path: Path | None = None, serials_path: Path | None = None) -> Config:
     temp = raw.get("temperature") or {}
     gate = raw.get("gate") or {}
     paths = raw.get("paths") or {}
+    adjusters = raw.get("adjusters") or {}
 
     domain = os.environ.get(ENV_DOMAIN) or ep.get("domain") or ""
     if not domain:
@@ -212,13 +222,12 @@ def load(path: Path | None = None, serials_path: Path | None = None) -> Config:
         encoder_device=device,
         pv_map=pv_map,
         scale={k: float(v) for k, v in (ep.get("scale") or {}).items()},
-        zero_setpoint_suffix=ep.get("zero_setpoint_suffix", "_SP"),
-        zero_process_suffix=ep.get("zero_process_suffix", "_ZCALC.PROC"),
         sensor_pvs=[str(s) for s in sensors],
         ca=ca,
         max_spread_c=float(temp.get("max_spread_c", 0.5)),
         gate_default_mm=float(gate.get("default_mm", 0.010)),
         encoder_resolution_mm=float(gate.get("encoder_resolution_mm", 0.001)),
+        stale_after_s=float(gate.get("stale_after_s", 5.0)),
         sessions_db=Path(
             os.environ.get(ENV_SESSIONS_DB) or paths.get("sessions_db") or "sessions.db"
         ).expanduser(),
@@ -229,7 +238,19 @@ def load(path: Path | None = None, serials_path: Path | None = None) -> Config:
         bay=os.environ.get(ENV_BAY, ""),
         config_path=config_path,
         serials=load_serials(_serials_path(config_path, paths, serials_path)),
+        mm_per_turn_vertical=float(adjusters.get("mm_per_turn_vertical", 0.227)),
+        # .get(key, default) rather than .get(key) or default: a key present
+        # but explicitly null in the config is a deliberate "not measured for
+        # this rig" and must stay None, not fall back to the measured value.
+        mm_per_turn_sway=_optional_float(
+            adjusters.get("mm_per_turn_sway", 0.391190392363964)
+        ),
+        mm_per_turn_surge=_optional_float(adjusters.get("mm_per_turn_surge", 20.0)),
     )
+
+
+def _optional_float(v: Any) -> float | None:
+    return None if v is None else float(v)
 
 
 def _serials_path(
