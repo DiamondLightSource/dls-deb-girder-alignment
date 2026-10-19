@@ -102,7 +102,6 @@ temperature:
 gate:
   default_mm: 0.010             # per-encoder "on target" gate
   encoder_resolution_mm: 0.001  # the gate is never allowed finer than this
-  stale_after_s: 5.0            # UI flags a reading as stale after this long
 
 # Adjuster-screw linear travel per turn, used only to show the technician an
 # estimated turn count alongside the mm figure on each move step. Set null

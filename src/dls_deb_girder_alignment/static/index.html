@@ -940,8 +940,6 @@ function renderLive(r){
     // Down, not stale: an encoder whose timestamp is old is simply a girder
     // that is not moving. One with no value at all cannot be adjusted against.
     const down=rel==null,ok=!!p.ok;
-    const staleAfter=(INFO&&INFO.stale_after_s!=null)?INFO.stale_after_s:5;
-    const stale=!down&&rd.age!=null&&rd.age>staleAfter;
     let dirn,dcls,turnsRow='';
     if(down){dirn='NOT CONNECTED — DO NOT ADJUST';dcls='down';}
     else if(ok){dirn=`✓ IN TOLERANCE — ${fmt(err,4)} mm from target`;dcls='done';}
@@ -991,7 +989,6 @@ function renderLive(r){
       <div class="row"><span>target</span><b>${fmt(tgt,3)}</b></div>
       <div class="row"><span>absolute</span><b>${rd.absolute==null?'—':fmt(rd.absolute,3)}</b></div>
       ${(fin!=null&&Math.abs(fin-tgt)>1e-6)?`<div class="row"><span>settles to</span><b class="c-idle">${fmt(fin,3)}</b></div>`:''}
-      ${stale?`<div class="row"><span>reading</span><b class="c-warn">stale — ${rd.age.toFixed(1)}s old</b></div>`:''}
       ${turnsRow}
       ${progressBar(rd.relative,tgt,ok)}
       <div class="dirn ${dcls}">${dirn}</div></div>`;}).join('');

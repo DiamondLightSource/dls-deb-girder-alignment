@@ -481,10 +481,8 @@ case the toggle doesn't cover.
   old timestamp on all eight — age-based staleness flagged the normal case as
   a fault, and blocked the gate exactly when the step had been completed. What
   is checked is connection: a PV that is not connected has no value, the
-  reading shows NOT CONNECTED and the gate will not pass. The UI stays quiet
-  about age too, up to a point — past `gate.stale_after_s` (default 5 s) it
-  shows a "stale" note, purely informational, so a technician isn't left
-  wondering whether a long-unmoving reading is still live.
+  reading shows NOT CONNECTED and the gate will not pass. The UI does not
+  flag old readings either.
 - **Direction wording matches the physical adjuster, not the raw sign.**
   Vertical encoders read `-Y girder motion = +count`, so a target that needs
   the count to increase means the girder must go DOWN — the UI shows LOWER,

@@ -190,7 +190,6 @@ def create_app(service: Service) -> Flask:
                     "proximity_gate_mm": G.PROXIMITY_GATE_MM,
                 },
                 "gate_default_mm": cfg.gate_default_mm,
-                "stale_after_s": cfg.stale_after_s,
                 "mm_per_turn_vertical": cfg.mm_per_turn_vertical,
                 "mm_per_turn_sway": cfg.mm_per_turn_sway,
                 "mm_per_turn_surge": cfg.mm_per_turn_surge,

@@ -154,10 +154,6 @@ class Config:
     max_spread_c: float
     gate_default_mm: float
     encoder_resolution_mm: float
-    stale_after_s: float
-    """An encoder reading older than this flags as stale in the UI. Not a
-    fault by itself - see epics_io's module docstring - just a threshold for
-    when to say so on screen."""
     sessions_db: Path
     reports: Path
     models: Path | None
@@ -227,7 +223,6 @@ def load(path: Path | None = None, serials_path: Path | None = None) -> Config:
         max_spread_c=float(temp.get("max_spread_c", 0.5)),
         gate_default_mm=float(gate.get("default_mm", 0.010)),
         encoder_resolution_mm=float(gate.get("encoder_resolution_mm", 0.001)),
-        stale_after_s=float(gate.get("stale_after_s", 5.0)),
         sessions_db=Path(
             os.environ.get(ENV_SESSIONS_DB) or paths.get("sessions_db") or "sessions.db"
         ).expanduser(),
