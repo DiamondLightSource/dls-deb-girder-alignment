@@ -531,9 +531,7 @@ class _NumberedCanvas(_canvas.Canvas):
             self.setFont("Helvetica", 7)
             self.setFillColor(GREY)
             page_no = self._pageNumber  # pyright: ignore[reportAttributeAccessIssue]
-            self.drawRightString(
-                A4[0] - 16 * MM, 9 * MM, f"Page {page_no} of {total}"
-            )
+            self.drawRightString(A4[0] - 16 * MM, 9 * MM, f"Page {page_no} of {total}")
             _canvas.Canvas.showPage(self)
         _canvas.Canvas.save(self)
 
@@ -573,9 +571,7 @@ def build_pdf(session, out_dir: Path, partial: bool = False) -> Path:
                 "Bay",
                 session.bay or "—",
                 "Temperature",
-                "—"
-                if session.temperature is None
-                else f"{session.temperature:.1f} °C",
+                "—" if session.temperature is None else f"{session.temperature:.1f} °C",
             ],
             [
                 "Iterations",
@@ -929,7 +925,7 @@ def build_pdf(session, out_dir: Path, partial: bool = False) -> Path:
                 )
         st.append(_tbl(rows, [34 * MM, 24 * MM, 34 * MM, 34 * MM, 34 * MM]))
         warp_note = (
-            " \"warp\" rows recover the checkerboard amplitude the same way "
+            ' "warp" rows recover the checkerboard amplitude the same way '
             "from achieved encoder deltas as the 6 rigid axes above - a "
             "consistent residual here across many sessions is exactly the "
             "signal that the stored FEA compliance gain needs revising."

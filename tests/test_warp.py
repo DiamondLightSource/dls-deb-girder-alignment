@@ -90,9 +90,7 @@ def test_uncharacterised_type_falls_back_to_rigid_only(monkeypatch, survey_for):
     assert machine.fea is None
     assert machine.fea_gain("fids", "APNT47") is None
 
-    measured = dict(
-        zip(machine.fids, survey_for(machine, {"heave": 0.3}), strict=True)
-    )
+    measured = dict(zip(machine.fids, survey_for(machine, {"heave": 0.3}), strict=True))
     fit = G.fit_pose(measured, machine)
     assert fit.warp_modeled is False
     assert fit.err["warp"] == 0.0

@@ -290,7 +290,7 @@ def test_undo_survey_restores_the_previous_state(session: Session, survey_for):
 
 
 def test_converged_survey_completes_the_session(session: Session, survey_for):
-    """"Converged" means on the session's own target, heave pre-set included.
+    """ "Converged" means on the session's own target, heave pre-set included.
 
     Phase stays "solved", not "complete" - the operator can still choose to
     accept the survey and generate a further round of correction steps even

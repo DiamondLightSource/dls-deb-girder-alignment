@@ -313,9 +313,7 @@ class Session:
                     "steps": [mv["step"] for mv in this_iter_moves],
                     "predicted": predicted,
                     "actual": actual,
-                    "residual": {
-                        k: actual[k] - predicted.get(k, 0.0) for k in actual
-                    },
+                    "residual": {k: actual[k] - predicted.get(k, 0.0) for k in actual},
                 }
 
         # "solved" is a real waiting state: the pose error is shown, but the

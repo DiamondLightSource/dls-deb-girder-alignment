@@ -82,9 +82,7 @@ def test_session_uses_the_bias_by_default(survey_for):
 
 
 def test_session_can_opt_out_of_the_bias(survey_for):
-    s = Session(
-        serial="DLS0011116", gtype="MS", operator="tester", heave_bias_mm=0.0
-    )
+    s = Session(serial="DLS0011116", gtype="MS", operator="tester", heave_bias_mm=0.0)
     assert s.heave_bias_mm == 0.0
     machine = G.machine("MS")
     s.add_survey(survey_for(machine, {}))

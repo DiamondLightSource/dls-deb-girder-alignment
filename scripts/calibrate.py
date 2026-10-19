@@ -192,8 +192,10 @@ def print_report(rows: list[dict], min_samples: int) -> None:
         )
         return
 
-    print(f"{'type':<5}{'axis':<8}{'n':>5}  {'mean resid':>11}  {'std':>8}  "
-          f"{'slope':>7}  {'r':>6}   suggestion")
+    print(
+        f"{'type':<5}{'axis':<8}{'n':>5}  {'mean resid':>11}  {'std':>8}  "
+        f"{'slope':>7}  {'r':>6}   suggestion"
+    )
     print("-" * 92)
     for row in rows:
         if row["confident"]:
