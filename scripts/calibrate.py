@@ -75,10 +75,20 @@ MIN_CORRELATION = 0.3
 
 
 def load_sessions(paths: list[Path]) -> dict[str, dict]:
-    """Pool sessions from one or more export files, unwrapping either shape."""
+    """Pool sessions from one or more files, unwrapping any of the three shapes.
+
+    Besides the two export shapes, accepts a single session on its own - the
+    ``girder_<serial>_<type>_<stamp>_PARTIAL/FINAL.json`` written next to each
+    report PDF. Several snapshots of one session pool by id like anything
+    else; files are read in the order given, so later snapshots win (pass
+    them sorted, which a shell glob of the timestamped names already does).
+    """
     out: dict[str, dict] = {}
     for p in paths:
-        raw = json.loads(p.read_text())
+        raw = json.loads(p.read_text(encoding="utf-8"))
+        if isinstance(raw, dict) and "id" in raw and "moves" in raw:
+            out[raw["id"]] = raw
+            continue
         has_wrapper = isinstance(raw, dict) and "sessions" in raw
         sessions = raw["sessions"] if has_wrapper else raw
         if not isinstance(sessions, dict):
@@ -87,18 +97,32 @@ def load_sessions(paths: list[Path]) -> dict[str, dict]:
     return out
 
 
+def is_null_round(predicted: dict, actual: dict) -> bool:
+    """True when a round's actual is exactly zero everywhere despite a move.
+
+    Real hardware never moves to the exact float - this only happens when the
+    "after" survey is the same data as the "before" one (e.g. the same file
+    re-uploaded after a survey undo), so actual = before - before. Scoring it
+    would pull every slope toward 0 for no physical reason.
+    """
+    moved = any(abs(v) > 1e-6 for v in predicted.values())
+    return moved and all(v == 0.0 for v in actual.values())
+
+
 def collect_samples(
     sessions: dict[str, dict], gtype_filter: str | None = None
-) -> dict[tuple[str, str], list[tuple[float, float]]]:
-    """-> {(gtype, axis): [(predicted, actual), ...]} across every session.
+) -> tuple[dict[tuple[str, str], list[tuple[float, float]]], list[str]]:
+    """-> ({(gtype, axis): [(predicted, actual), ...]}, skipped round labels).
 
     Only axes that were GENUINELY predicted are collected - for "warp" that
     means the round's predicted dict actually has a "warp" key (the girder
     type had FEA data at the time), not the fallback where residual is just
     a copy of actual. Including those would make it look like the model
-    agrees with itself, which proves nothing.
+    agrees with itself, which proves nothing. Null rounds (see
+    ``is_null_round``) are skipped whole and reported back by label.
     """
     out: dict[tuple[str, str], list[tuple[float, float]]] = defaultdict(list)
+    skipped: list[str] = []
     for sess in sessions.values():
         gtype = sess.get("gtype")
         if not gtype or (gtype_filter and gtype != gtype_filter):
@@ -108,6 +132,12 @@ def collect_samples(
             if not mc:
                 continue
             predicted, actual = mc.get("predicted") or {}, mc.get("actual") or {}
+            if is_null_round(predicted, actual):
+                skipped.append(
+                    f"{sess.get('serial', sess.get('id'))} iteration "
+                    f"{mv.get('iteration')}"
+                )
+                continue
             for axis in AXES:
                 if axis not in predicted:
                     continue  # not genuinely predicted this round - see docstring
@@ -115,7 +145,7 @@ def collect_samples(
                 if a is None:
                     continue
                 out[(gtype, axis)].append((float(predicted[axis]), float(a)))
-    return out
+    return out, skipped
 
 
 def regress_through_origin(pairs: list[tuple[float, float]]) -> tuple[float, float]:
@@ -266,13 +296,19 @@ def main(argv: list[str] | None = None) -> int:
         print(f"calibrate: {exc}", file=sys.stderr)
         return 1
 
-    samples = collect_samples(sessions, args.type)
+    samples, skipped = collect_samples(sessions, args.type)
     rows = summarise(samples, args.min_samples)
 
     if args.json:
-        print(json.dumps(rows, indent=2))
+        print(json.dumps({"rows": rows, "skipped_null_rounds": skipped}, indent=2))
     else:
         print(f"{len(sessions)} session(s) loaded.\n")
+        if skipped:
+            print(
+                f"Skipped {len(skipped)} round(s) whose resurvey showed exactly "
+                f"zero change despite a commanded move (same survey data "
+                f"re-uploaded?): {', '.join(skipped)}\n"
+            )
         print_report(rows, args.min_samples)
     return 0
 
