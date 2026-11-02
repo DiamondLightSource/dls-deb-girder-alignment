@@ -177,6 +177,46 @@ def test_predicted_pose_change_inverts_the_jacobian(ms: G.Machine):
     back = G.predicted_pose_change(ms, achieved)
     for key, want in err.items():
         assert back[key] == pytest.approx(-want, abs=1e-6)
+    # MS has FEA vencoder data, so warp is predicted too - purely rigid
+    # encoder deltas (no warp injected) must recover ~0 of it.
+    assert "warp" in back
+    assert back["warp"] == pytest.approx(0.0, abs=1e-6)
+
+
+def test_predicted_pose_change_recovers_injected_warp(machine: G.Machine):
+    """A pure warp bend (no rigid pose change) in the achieved encoder deltas
+    must be recovered as warp amplitude, not misattributed to a rigid axis -
+    this is what lets session.py's model validation actually check the FEA
+    compliance gains against real hardware, not just the 6 rigid DOF.
+    """
+    injected = 0.12  # mm of warp_pattern-equivalent jack command
+    achieved = {}
+    for eid in G.VERT_IDS:
+        gain = machine.fea_gain("venc", eid)
+        achieved[eid] = -(injected * gain) if gain is not None else 0.0
+    for eid in G.HORZ_IDS:
+        achieved[eid] = 0.0
+
+    back = G.predicted_pose_change(machine, achieved)
+    if machine.fea is None:
+        assert "warp" not in back
+        return
+    assert back["warp"] == pytest.approx(injected, abs=1e-6)
+    for key in ("sway", "heave", "surge", "roll", "pitch", "yaw"):
+        assert back[key] == pytest.approx(0.0, abs=1e-6)
+
+
+def test_predicted_pose_change_omits_warp_when_uncharacterised(
+    monkeypatch, ms: G.Machine
+):
+    """A girder type absent from FEA_COMPLIANCE must not get a fabricated
+    "warp" prediction - the key must be missing entirely, not a false 0.0,
+    so callers can tell "not predicted" from "predicted as zero".
+    """
+    monkeypatch.setattr(ms, "fea", None)
+    achieved = ms.encoder_deltas({"heave": 0.3})
+    back = G.predicted_pose_change(ms, achieved)
+    assert "warp" not in back
 
 
 def test_assess_flags_out_of_tolerance():

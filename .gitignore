@@ -73,3 +73,4 @@ lockfiles/
 # local run artefacts
 sessions/
 reports/
+MOVE_LOGS/

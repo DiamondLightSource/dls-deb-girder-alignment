@@ -14,7 +14,9 @@ from typing import Any
 
 import pytest
 
-from dls_deb_girder_alignment import epics_io
+pytest.importorskip("cothread")  # not installed on Windows/macOS dev machines
+
+from dls_deb_girder_alignment import epics_io  # noqa: E402
 
 
 @pytest.fixture

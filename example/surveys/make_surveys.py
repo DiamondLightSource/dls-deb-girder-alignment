@@ -73,6 +73,8 @@ if __name__ == "__main__":
         },
         seed=1,
     )
+    # As-left for a BARE girder: heave sits on the pre-set target
+    # (+0.24 mm, Machine.sag_bias_mm), not true nominal, plus a small residual.
     write(
         HERE / "ms_DLS0011116_as_left.csv",
         "MS",
@@ -80,7 +82,7 @@ if __name__ == "__main__":
         {
             "roll": 0.02,
             "pitch": 0.05,
-            "heave": 0.03,
+            "heave": G.machine("MS").sag_bias_mm + 0.03,
             "sway": 0.04,
             "surge": 0.08,
             "yaw": 0.06,
