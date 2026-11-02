@@ -241,10 +241,37 @@ class Session:
                 f"{G.PROXIMITY_GATE_MM} mm of the {self.gtype} reference points. "
                 "Check the file is in the master frame and is the right girder."
             )
+        matched_rec = {k: list(map(float, v)) for k, v in matched.items()}
+
+        # Two real tracker surveys never agree to the last float, so fiducials
+        # identical to an earlier survey's mean the same file uploaded again
+        # (seen on the rig: "1st set" re-uploaded after undoing "2nd set").
+        # Harmless if nothing has moved since - it's just the same pose again.
+        # But if moves were made since, accepting it claims the girder never
+        # moved and scores those moves' model_check against pre-move data
+        # (actual = exactly 0 everywhere), so refuse it outright. ">=" also
+        # catches moves made under a survey that was later undone.
+        dup = next(
+            (sv for sv in reversed(self.surveys) if sv.get("matched") == matched_rec),
+            None,
+        )
+        if dup is not None:
+            label = f"iteration {dup['iteration']}" + (
+                f" ({dup['filename']})" if dup.get("filename") else ""
+            )
+            if any(mv["iteration"] >= dup["iteration"] for mv in self.moves):
+                raise ValueError(
+                    f"this survey is identical to {label}, and the girder has "
+                    "been moved since then - it cannot describe where the girder "
+                    "is now. Upload the survey taken after the latest moves."
+                )
+
         fit = G.fit_pose(matched, m)
         fit.unmatched = unmatched
         if unmatched:
             fit.warnings.append(f"{len(unmatched)} uploaded point(s) matched nothing")
+        if dup is not None:
+            fit.warnings.append(f"same survey data as {label} - re-uploaded file?")
 
         self.iteration += 1
         rec = {
@@ -265,7 +292,7 @@ class Session:
             },
             "err": fit.err,
             "points": [list(map(float, p)) for p in points],
-            "matched": {k: list(map(float, v)) for k, v in matched.items()},
+            "matched": matched_rec,
             "assessment": G.assess(
                 fit.err, self.tol, target={"heave": self.heave_bias_mm}
             ),

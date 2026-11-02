@@ -289,6 +289,50 @@ def test_undo_survey_restores_the_previous_state(session: Session, survey_for):
     assert session.datum_group == ""
 
 
+def _complete_round(session: Session) -> None:
+    """Drive every step of the current plan to its expected encoder values."""
+    while session.phase == "moving":
+        step = _step(session)
+        if session.needs_datum(step):
+            session.capture_datum(dict.fromkeys(G.ENCODER_IDS, 0.0), step["group"])
+        session.complete_step(_readings(step["expected"]))
+
+
+def test_identical_survey_with_no_moves_since_is_accepted_with_a_warning(
+    survey_for,
+):
+    """Same file twice with nothing moved in between scores no moves against
+    it - harmless, so allowed, but flagged on the fit.
+    """
+    s = Session(serial="DLS0011116", gtype="MS", operator="tester", bay="1")
+    pts = survey_for(G.machine("MS"), {"roll": 0.5, "heave": 0.4})
+    s.add_survey(pts, filename="1st set.txt")
+    rec = s.add_survey(pts, filename="1st set.txt")
+    assert s.iteration == 2
+    assert any("iteration 1 (1st set.txt)" in w for w in rec["fit"]["warnings"])
+
+
+def test_identical_survey_after_moves_is_refused(session: Session, survey_for):
+    """Replays the rig session that corrupted a model_check: the post-move
+    survey is undone and the PRE-move file re-uploaded in its place. Accepted,
+    it scored the round's moves as producing exactly zero change.
+    """
+    before = session.surveys[-1]
+    _complete_round(session)
+    session.add_survey(survey_for(G.machine("MS"), {"heave": 0.1}))
+    session.undo_survey()
+
+    with pytest.raises(ValueError, match="moved since"):
+        session.add_survey([list(p) for p in before["points"]])
+    assert session.iteration == 1  # refused upload changed nothing
+    assert len(session.surveys) == 1
+
+    # The real post-move survey is still accepted and scored normally.
+    session.add_survey(survey_for(G.machine("MS"), {"heave": 0.1}))
+    mc = session.moves[-1]["model_check"]
+    assert any(v != 0.0 for v in mc["actual"].values())
+
+
 def test_converged_survey_completes_the_session(session: Session, survey_for):
     """ "Converged" means on the session's own target, heave pre-set included.
 
