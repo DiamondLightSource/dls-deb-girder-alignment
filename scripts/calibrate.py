@@ -20,9 +20,12 @@ slope away from 1.0, not just noise around 0.
       at a GEOMETRY error (e.g. a bearing pivot position), not something to
       "retune" the way a gain is.
     - For WARP, the model is an FEA-derived compliance gain
-      (``_fea_data.FEA_COMPLIANCE``) multiplied into the same prediction -
-      a slope away from 1.0 here is exactly the signal that the stored gain
-      for that girder type should be scaled by that slope.
+      (``_fea_data.FEA_COMPLIANCE``). It sits in the DESIGN MATRIX of the
+      prediction (encoder change = -venc gain x warp), so predicted warp
+      scales as 1/venc gain, while the survey's "actual" warp scales as
+      1/fids gain. A slope away from 1.0 says the venc:fids gain RATIO is
+      off: multiply the venc gains by 1/slope (or the fids gains by slope) -
+      this data alone cannot say which side of the FEA is wrong.
 
 WHAT THIS DOESN'T DO. This finds a single uniform SCALE correction per
 (girder type, axis) - it cannot tell you that one individual vencoder's
@@ -239,9 +242,11 @@ def print_report(rows: list[dict], min_samples: int) -> None:
         unit = "mrad" if row["axis"] in ("roll", "yaw", "pitch") else "mm"
         slope_known = row["slope"] == row["slope"]  # False for NaN
         if row["axis"] == "warp":
+            # Not "by slope": predicted warp goes as 1/venc gain - see docstring.
             suggestion = (
-                f"scale stored FEA venc gains by {row['slope']:.3f}"
-                if slope_known
+                f"venc:fids gain ratio off - venc x{1 / row['slope']:.2f} "
+                f"or fids x{row['slope']:.3f}"
+                if slope_known and row["slope"]
                 else "not enough spread to fit"
             )
         elif not slope_known:
