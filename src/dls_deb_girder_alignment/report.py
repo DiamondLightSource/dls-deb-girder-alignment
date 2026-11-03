@@ -536,11 +536,17 @@ class _NumberedCanvas(_canvas.Canvas):
         _canvas.Canvas.save(self)
 
 
-def build_pdf(session, out_dir: Path, partial: bool = False) -> Path:
+def _stamp() -> str:
+    return datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+
+
+def build_pdf(
+    session, out_dir: Path, partial: bool = False, stamp: str | None = None
+) -> Path:
     ss = _styles()
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    stamp = stamp or _stamp()
     suffix = "PARTIAL" if partial else "FINAL"
     path = out_dir / f"girder_{session.serial}_{session.gtype}_{stamp}_{suffix}.pdf"
 
@@ -1087,10 +1093,12 @@ def _girder_state(session) -> str:
     return "Loaded with magnets (no pre-set)"
 
 
-def build_json(session, out_dir: Path, partial: bool = False) -> Path:
+def build_json(
+    session, out_dir: Path, partial: bool = False, stamp: str | None = None
+) -> Path:
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
-    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S")
+    stamp = stamp or _stamp()
     suffix = "PARTIAL" if partial else "FINAL"
     path = out_dir / f"girder_{session.serial}_{session.gtype}_{stamp}_{suffix}.json"
     d = session.to_dict()
@@ -1102,4 +1110,12 @@ def build_json(session, out_dir: Path, partial: bool = False) -> Path:
 
 
 def build(session, out_dir: Path, partial: bool = False):
-    return build_pdf(session, out_dir, partial), build_json(session, out_dir, partial)
+    # One stamp for both, so the pair always share a stem. Stamped separately,
+    # a PDF build that crossed a second boundary left the .json one second
+    # later, and scripts/mirror_reports.py (which derives the .json name from
+    # the PDF's) silently never copied it - seen on the rig for DLS01132.
+    stamp = _stamp()
+    return (
+        build_pdf(session, out_dir, partial, stamp),
+        build_json(session, out_dir, partial, stamp),
+    )

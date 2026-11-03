@@ -47,7 +47,7 @@ import sys
 import urllib.error
 import urllib.parse
 import urllib.request
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 #: Reports are written as girder_<serial>_<type>_<stamp>_<FINAL|PARTIAL>.pdf
@@ -55,6 +55,12 @@ from pathlib import Path
 #: PDFs, so the sibling is derived from the name and fetched best-effort - see
 #: fetch_one().
 JSON_SUFFIX = ".json"
+
+#: How many seconds after its PDF's stamp to look for a .json sibling. Before
+#: the service stamped both from one clock read, the .json took its own stamp
+#: once the PDF had been built - usually the same second, sometimes the next.
+JSON_STAMP_SLACK_S = 5
+STAMP_FORMAT = "%Y%m%d-%H%M%S"
 
 
 def fetch(url: str, timeout: float) -> bytes:
@@ -73,10 +79,8 @@ def listing(base: str, timeout: float) -> list[str]:
 def fetch_one(base: str, name: str, dest: Path, timeout: float, dry_run: bool) -> bool:
     """Copy one file across if it is not there already. True if it was new.
 
-    A missing ``.json`` sibling is not an error. The PDF and the JSON each take
-    their own timestamp when they are written, so a report generated across a
-    second boundary has stems one second apart and the sibling cannot be
-    derived. The PDF is the record; the JSON is a convenience.
+    A missing ``.json`` is not an error here - see json_candidates() for how
+    the sibling is found. The PDF is the record; the JSON is a convenience.
     """
     out = dest / name
     if out.exists():
@@ -98,6 +102,37 @@ def fetch_one(base: str, name: str, dest: Path, timeout: float, dry_run: bool) -
     part.rename(out)
     print(f"fetched {name} ({len(data)} bytes)")
     return True
+
+
+def json_candidates(pdf: str) -> list[str]:
+    """Names the PDF's .json sibling may have, most likely first.
+
+    Current services write both with one stamp. Older ones stamped the .json
+    separately after building the PDF, so a report generated across a second
+    boundary has a .json stem a second or so later than its PDF's.
+    """
+    stem = pdf.removesuffix(".pdf")
+    try:
+        head, stamp, tail = stem.rsplit("_", 2)
+        t = datetime.strptime(stamp, STAMP_FORMAT)
+    except ValueError:
+        return [stem + JSON_SUFFIX]  # not our naming scheme - exact match only
+    return [
+        f"{head}_{(t + timedelta(seconds=dt)).strftime(STAMP_FORMAT)}_{tail}"
+        + JSON_SUFFIX
+        for dt in range(JSON_STAMP_SLACK_S + 1)
+    ]
+
+
+def fetch_json(base: str, pdf: str, dest: Path, timeout: float, dry_run: bool) -> bool:
+    """Copy the PDF's .json sibling across, wherever its stamp landed."""
+    names = json_candidates(pdf)
+    if any((dest / n).exists() for n in names):
+        return False
+    if dry_run:
+        return fetch_one(base, names[0], dest, timeout, dry_run)
+    # fetch_one swallows a .json 404 as False - the next candidate is tried.
+    return any(fetch_one(base, n, dest, timeout, dry_run) for n in names)
 
 
 def fetch_sessions(base: str, dest: Path, timeout: float, dry_run: bool) -> bool:
@@ -131,8 +166,8 @@ def mirror(
         dest.mkdir(parents=True, exist_ok=True)
     count = 0
     for pdf in listing(base, timeout):
-        for name in (pdf, pdf.removesuffix(".pdf") + JSON_SUFFIX):
-            count += fetch_one(base, name, dest, timeout, dry_run)
+        count += fetch_one(base, pdf, dest, timeout, dry_run)
+        count += fetch_json(base, pdf, dest, timeout, dry_run)
     if sessions:
         count += fetch_sessions(base, dest, timeout, dry_run)
     return count
