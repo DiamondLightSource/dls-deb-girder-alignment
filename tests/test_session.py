@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import numpy as np
 import pytest
 
 from dls_deb_girder_alignment import geometry as G
@@ -143,9 +144,12 @@ def test_gate_rejects_a_parasitic_excursion(session: Session):
     step = _step(session)
     # Build the excursion from the actual warp mode. An arbitrary perturbation
     # would land mostly in the rigid subspace and simply read as a pose change.
+    # A pattern-shaped excursion (rows are scaled so +A on each encoder of
+    # the pattern reads A), comfortably past even the capped stop limit.
     warp_mode = session.machine.parasitic[0]
+    shape = warp_mode / np.abs(warp_mode).max()
     warped = {
-        eid: step["expected"][eid] + 10 * G.WARP_STOP * float(warp_mode[i])
+        eid: step["expected"][eid] + 2 * G.WARP_STOP_MAX * float(shape[i])
         for i, eid in enumerate(G.ENCODER_IDS)
     }
     chk = session.check_step(_readings(warped), step)

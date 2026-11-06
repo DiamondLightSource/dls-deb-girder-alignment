@@ -201,8 +201,8 @@ def test_full_alignment_workflow(client, survey_for, cfg):
         _json(client.client.post("/api/demo/drive", json={"fraction": 1.0}))
         enc = _settle(client)
         assert enc["check"]["ok"], enc["check"]["reasons"]
-        assert abs(enc["parasitic"]["warp"]) < G.WARP_STOP
-        assert abs(enc["parasitic"]["stretch"]) < G.STRETCH_STOP
+        assert abs(enc["parasitic"]["warp"]) < enc["parasitic"]["warp_stop"]
+        assert abs(enc["parasitic"]["stretch"]) < enc["parasitic"]["stretch_stop"]
 
         done = _json(client.client.post("/api/step/complete", json={}))
         assert done["accepted"], done.get("check")

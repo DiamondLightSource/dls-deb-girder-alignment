@@ -32,6 +32,70 @@ def test_parasitic_modes_are_the_left_null_space(machine: G.Machine):
     assert np.allclose(machine.parasitic @ machine.J, 0.0, atol=1e-9)
 
 
+def test_parasitic_modes_are_physical_not_an_svd_mix(machine: G.Machine):
+    """WARP must read only the vertical encoders and STRETCH only the surge
+    pair. The raw SVD basis mixed them, so surge creep during a vertical move
+    tripped "WARP" on the rig.
+    """
+    vert = [G.ENCODER_IDS.index(e) for e in G.VERT_IDS]
+    horz = [G.ENCODER_IDS.index(e) for e in G.HORZ_IDS]
+    warp_row, stretch_row = machine.parasitic
+    assert np.allclose(warp_row[horz], 0.0, atol=1e-6)
+    assert np.allclose(stretch_row[vert], 0.0, atol=1e-6)
+    sways = [G.ENCODER_IDS.index(e) for e in ("SWAY_US", "SWAY_DS")]
+    assert np.allclose(stretch_row[sways], 0.0, atol=1e-6)
+
+    # Amplitude units: +A on every encoder of the pattern reads A.
+    for row in machine.parasitic:
+        shape = row / np.abs(row).max()
+        assert machine.parasitic @ (0.01 * shape) == pytest.approx(
+            0.01 * (machine.parasitic @ shape)
+        )
+        assert float(row @ (0.01 * shape)) == pytest.approx(0.01)
+
+
+def test_parasitic_limits_scale_with_travel_up_to_a_cap():
+    small, mid, big = (G.parasitic_limits(t) for t in (0.0, 0.2, 5.0))
+    assert small["warp_stop"] == G.WARP_STOP_BASE
+    assert small["warp_stop"] < mid["warp_stop"] < big["warp_stop"]
+    assert big["warp_stop"] == G.WARP_STOP_MAX
+    assert big["stretch_stop"] == G.STRETCH_STOP_MAX
+    for lim in (small, mid, big):
+        assert lim["warp_warn"] < lim["warp_stop"]
+        assert lim["stretch_warn"] < lim["stretch_stop"]
+
+
+def test_bow_changes_residuals_not_the_fitted_pose(machine: G.Machine, survey_for):
+    """The bow is referenced to the plane through the fiducials: the heave
+    target (that plane at -450 + pre-set) must mean what it did. Not to the
+    last float - the bow is a MEDIAN of real fits, not an exact projection -
+    but within ~1% of the tightest tolerance.
+    """
+    flat = G.Machine(machine.type, bow=False)
+    err = {"roll": 0.3, "heave": 0.2, "sway": -0.1, "pitch": 0.05}
+    bowed_survey = survey_for(machine, err)  # a girder with the measured bow
+    pts = dict(zip(machine.fids, bowed_survey, strict=True))
+    with_bow, without = G.fit_pose(pts, machine), G.fit_pose(pts, flat)
+    for k in ("roll", "heave", "sway", "pitch", "yaw", "surge"):
+        assert with_bow.err[k] == pytest.approx(without.err[k], abs=2e-3)
+        assert with_bow.err[k] == pytest.approx(err.get(k, 0.0), abs=1e-6)
+    assert with_bow.rms < 1e-6 < without.rms
+
+
+def test_paired_types_share_a_bow():
+    """Same fabrication, same shape: SM uses MS's, ML uses LM's."""
+    assert G.machine("SM").bow_source == "MS"
+    assert G.machine("ML").bow_source == "LM"
+    for a, b in (("MS", "SM"), ("LM", "ML")):
+        ma, mb = G.machine(a), G.machine(b)
+        fa, fb = G.Machine(a, bow=False), G.Machine(b, bow=False)
+        for n in ma.fids:
+            da, db = ma.fids[n] - fa.fids[n], mb.fids[n] - fb.fids[n]
+            ja = [da @ ma.jx, da @ ma.jy, da @ ma.jz]
+            jb = [db @ mb.jx, db @ mb.jy, db @ mb.jz]
+            assert np.allclose(ja, jb, atol=1e-9)
+
+
 def test_rigid_motion_shows_no_parasitic_content(machine: G.Machine):
     """Any pose the girder can physically take must read as zero warp/stretch."""
     deltas = machine.encoder_deltas(

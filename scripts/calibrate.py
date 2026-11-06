@@ -82,15 +82,17 @@ def load_sessions(paths: list[Path]) -> dict[str, dict]:
 
     Besides the two export shapes, accepts a single session on its own - the
     ``girder_<serial>_<type>_<stamp>_PARTIAL/FINAL.json`` written next to each
-    report PDF. Several snapshots of one session pool by id like anything
-    else; files are read in the order given, so later snapshots win (pass
-    them sorted, which a shell glob of the timestamped names already does).
+    report PDF. Several snapshots of one session pool by id, keeping the one
+    the service generated last - not the last file named, since copies get
+    renamed by hand on the share (e.g. ``..._PRETORQUE.json``).
     """
     out: dict[str, dict] = {}
     for p in paths:
         raw = json.loads(p.read_text(encoding="utf-8"))
         if isinstance(raw, dict) and "id" in raw and "moves" in raw:
-            out[raw["id"]] = raw
+            held = out.get(raw["id"])
+            if held is None or raw.get("generated", "") >= held.get("generated", ""):
+                out[raw["id"]] = raw
             continue
         has_wrapper = isinstance(raw, dict) and "sessions" in raw
         sessions = raw["sessions"] if has_wrapper else raw

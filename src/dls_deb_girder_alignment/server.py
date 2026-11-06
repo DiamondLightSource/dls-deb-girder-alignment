@@ -183,10 +183,13 @@ def create_app(service: Service) -> Flask:
                 "sensor_pvs": cfg.sensor_pvs,
                 "models_available": bool(cfg.models and cfg.models.is_dir()),
                 "limits": {
-                    "warp_warn": G.WARP_WARN,
-                    "warp_stop": G.WARP_STOP,
-                    "stretch_warn": G.STRETCH_WARN,
-                    "stretch_stop": G.STRETCH_STOP,
+                    # At zero travel; the live gate scales these with the
+                    # step's travel - /api/encoders reports the values in use.
+                    **G.parasitic_limits(0.0),
+                    "warp_stop_per_mm": G.WARP_STOP_PER_MM,
+                    "warp_stop_max": G.WARP_STOP_MAX,
+                    "stretch_stop_per_mm": G.STRETCH_STOP_PER_MM,
+                    "stretch_stop_max": G.STRETCH_STOP_MAX,
                     "proximity_gate_mm": G.PROXIMITY_GATE_MM,
                 },
                 "gate_default_mm": cfg.gate_default_mm,
@@ -473,26 +476,21 @@ def create_app(service: Service) -> Flask:
             # Relative to the step's own expected parasitic content when one
             # is active — see check_step: a warp-corrected or intermediate
             # pair-move target can legitimately be nonzero here, and only the
-            # UNEXPECTED part should read against WARP/STRETCH_STOP. With no
-            # active step there is nothing to compare against, so fall back
-            # to the raw reading vs. zero.
+            # UNEXPECTED part should read against the stop limits - which
+            # scale with the step's travel, so they come from the check too.
+            # With no active step there is nothing to compare against, so
+            # fall back to the raw reading vs. zero at zero-travel limits.
             chk = s.check_step(readings, step) if step else None
             if chk is not None:
-                warp, stretch = chk["warp"], chk["stretch"]
+                warp, stretch, lim = chk["warp"], chk["stretch"], chk["limits"]
             else:
                 vec = [
                     (readings.get(e) or {}).get("relative") or 0.0
                     for e in G.ENCODER_IDS
                 ]
                 warp, stretch = s.machine.parasitic_of(vec)
-            out["parasitic"] = {
-                "warp": warp,
-                "stretch": stretch,
-                "warp_warn": G.WARP_WARN,
-                "warp_stop": G.WARP_STOP,
-                "stretch_warn": G.STRETCH_WARN,
-                "stretch_stop": G.STRETCH_STOP,
-            }
+                lim = G.parasitic_limits(0.0)
+            out["parasitic"] = {"warp": warp, "stretch": stretch, **lim}
             out["datum_group"] = s.datum_group
             if chk is not None:
                 out["check"] = chk
