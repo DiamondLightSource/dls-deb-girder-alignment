@@ -27,6 +27,7 @@ from dataclasses import asdict, dataclass, field
 
 import numpy as np
 
+from ._bow_data import BARE_BOW_MM, BOW_REVISION, BOW_SOURCE
 from ._fea_data import FEA_COMPLIANCE, SAG_BIAS_MM
 from ._geom_data import GEOM, GEOMETRY_REVISION
 
@@ -48,9 +49,32 @@ VERT_IDS = ["V_US_IN", "V_US_OUT", "V_DS_IN", "V_DS_OUT"]
 HORZ_IDS = ["SURGE_US", "SWAY_US", "SURGE_DS", "SWAY_DS"]
 ENCODER_IDS = VERT_IDS + HORZ_IDS
 
-# Parasitic (non-rigid) monitor thresholds, mm.
-WARP_WARN, WARP_STOP = 0.003, 0.005
-STRETCH_WARN, STRETCH_STOP = 0.003, 0.005
+# Parasitic (non-rigid) monitor limits, mm of non-rigid motion per encoder.
+# The stop limit grows with the step's travel (the largest expected encoder
+# move from the group datum) up to a cap. Fitted to the Nov 2026 rig trials:
+# 59 steps on 5 girders, every one of which then surveyed in tolerance with
+# predicted and surveyed pose agreeing to ~3%. The fixed 0.005 mm limit
+# before it blocked 36 of those 59 steps with every encoder on target, so
+# operators overrode it as routine. These are the smallest base + slope
+# envelopes that pass every trial step with 20% margin; the caps keep the
+# gate meaningful on big moves, where the trials stayed small anyway.
+WARP_STOP_BASE, WARP_STOP_PER_MM, WARP_STOP_MAX = 0.010, 0.03, 0.025
+STRETCH_STOP_BASE, STRETCH_STOP_PER_MM, STRETCH_STOP_MAX = 0.020, 0.21, 0.060
+PARASITIC_WARN_FRACTION = 0.6
+
+
+def parasitic_limits(travel_mm: float = 0.0) -> dict[str, float]:
+    """Warn/stop limits for WARP and STRETCH at a given step travel (mm)."""
+    t = abs(travel_mm)
+    warp = min(WARP_STOP_BASE + WARP_STOP_PER_MM * t, WARP_STOP_MAX)
+    stretch = min(STRETCH_STOP_BASE + STRETCH_STOP_PER_MM * t, STRETCH_STOP_MAX)
+    return {
+        "warp_warn": warp * PARASITIC_WARN_FRACTION,
+        "warp_stop": warp,
+        "stretch_warn": stretch * PARASITIC_WARN_FRACTION,
+        "stretch_stop": stretch,
+    }
+
 
 PROXIMITY_GATE_MM = 10.0  # survey point -> reference matching gate
 
@@ -61,7 +85,7 @@ PROXIMITY_GATE_MM = 10.0  # survey point -> reference matching gate
 class Machine:
     """Resolved geometry for a single girder type."""
 
-    def __init__(self, gtype: str):
+    def __init__(self, gtype: str, bow: bool = True):
         if gtype not in GEOM:
             raise KeyError(f"unknown girder type {gtype!r}; have {sorted(GEOM)}")
         self.type = gtype
@@ -91,6 +115,15 @@ class Machine:
         self.fids: dict[str, np.ndarray] = {
             k: np.array(v, float) for k, v in g["fids"].items()
         }
+        # The bare girder's measured as-built shape (see _bow_data.py): it
+        # sags between the bearings, identically girder to girder. Referenced
+        # to the plane through the fiducials, so it changes only fit
+        # residuals, never the fitted pose. bow=False gives the flat design
+        # nominals - what scripts/derive_bow.py measures the bow against.
+        self.bow_source = BOW_SOURCE.get(gtype) if bow else None
+        for k, (dx, dy, dz) in BARE_BOW_MM.get(self.bow_source or "", {}).items():
+            if k in self.fids:
+                self.fids[k] = self.fids[k] + dx * self.jx + dy * self.jy + dz * self.jz
 
         self.J = self._build_jacobian()
         self.parasitic = self._parasitic_modes()
@@ -170,10 +203,32 @@ class Machine:
         return np.mean(pts, axis=0) - self.p0
 
     def _parasitic_modes(self) -> np.ndarray:
-        """Left-null space of J: the two non-rigid encoder combinations."""
+        """Left-null space of J as its two PHYSICAL modes: (WARP, STRETCH).
+
+        The SVD returns an arbitrary orthonormal basis of the 2-D null space,
+        and on this rig that basis mixed the two: "WARP" was -0.25 x vertical
+        twist + 0.62 x surge-pair sum, so surge encoders creeping during a
+        vertical move tripped WARP (seen on the rig - most of the "WARP"
+        overrides in the Nov 2026 trials). Rotated here so WARP reads only the
+        vertical encoders (twist) and STRETCH only the horizontal ones
+        (differential surge) - the split is exact, the null space really is
+        spanned by those two. Each row is scaled so a reading of +A on every
+        encoder of the pattern (signs as the pattern) reads A: mm of non-rigid
+        motion per encoder. Sign: + when V_US_IN / SURGE_US read +.
+        """
         rank = np.linalg.matrix_rank(self.J)
         _, _, vh = np.linalg.svd(self.J.T)
-        return vh[rank:]  # (2, 8)
+        null = vh[rank:]  # (2, 8), mixed basis
+        vert = [ENCODER_IDS.index(e) for e in VERT_IDS]
+        horz = [ENCODER_IDS.index(e) for e in HORZ_IDS]
+        rows = []
+        for zeroed, sign_ref in ((horz, "V_US_IN"), (vert, "SURGE_US")):
+            _, _, c = np.linalg.svd(null[:, zeroed].T)
+            n = c[-1] @ null
+            n = n / n[np.argmax(np.abs(n))]
+            n = n * np.sign(n[ENCODER_IDS.index(sign_ref)])
+            rows.append(n / (n @ n))
+        return np.array(rows)
 
     def _warp_pattern(self) -> dict[str, float]:
         """Geometric null-space jack pattern for the non-rigid vertical DOF.
@@ -263,6 +318,8 @@ class Machine:
             ],
             "fids": {k: v.tolist() for k, v in self.fids.items()},
             "revision": GEOMETRY_REVISION,
+            "bow_revision": BOW_REVISION if self.bow_source else None,
+            "bow_source": self.bow_source,
             "sag_bias_mm": self.sag_bias_mm,
         }
 

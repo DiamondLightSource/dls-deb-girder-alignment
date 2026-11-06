@@ -176,7 +176,13 @@ class Session:
         self.tol = G.tolerances(tol_overrides)
 
         self.machine = G.machine(gtype)
-        self.geometry_revision = G.GEOMETRY_REVISION
+        # The bow changes what every fit residual means, so the record names
+        # which measured shape (and whose - SM borrows MS's) was in use.
+        self.geometry_revision = G.GEOMETRY_REVISION + (
+            f" + {self.machine.bow_source} bow {G.BOW_REVISION}"
+            if self.machine.bow_source
+            else ""
+        )
         self.software_version = SOFTWARE_VERSION
 
         # Bare-girder heave pre-set (see geometry.compute_plan and
@@ -508,7 +514,15 @@ class Session:
         exp_vec = [step["expected"].get(e, 0.0) for e in G.ENCODER_IDS]
         warp_exp, stretch_exp = self.machine.parasitic_of(exp_vec)
         warp, stretch = warp_raw - warp_exp, stretch_raw - stretch_exp
-        par_ok = bool(abs(warp) <= G.WARP_STOP and abs(stretch) <= G.STRETCH_STOP)
+        # Bigger moves leave more honest parasitic content behind (see
+        # G.parasitic_limits), so the limit scales with how far this step's
+        # group has moved from its datum, not just this step's own targets -
+        # parasitic content accumulates across a group's steps.
+        travel = max((abs(v) for v in exp_vec), default=0.0)
+        lim = G.parasitic_limits(travel)
+        par_ok = bool(
+            abs(warp) <= lim["warp_stop"] and abs(stretch) <= lim["stretch_stop"]
+        )
 
         # A reading's age is deliberately not part of this. The encoders are
         # static for most of a measurement and their records only process on
@@ -529,7 +543,9 @@ class Session:
             )
         if not par_ok:
             reasons.append(
-                f"parasitic limit exceeded: WARP {warp:+.4f}, STRETCH {stretch:+.4f} mm"
+                f"parasitic limit exceeded: WARP {warp:+.4f} (stop "
+                f"{lim['warp_stop']:.3f}), STRETCH {stretch:+.4f} (stop "
+                f"{lim['stretch_stop']:.3f}) mm"
             )
 
         return {
@@ -540,6 +556,8 @@ class Session:
             "warp": float(warp),
             "stretch": float(stretch),
             "parasitic_ok": par_ok,
+            "travel": float(travel),
+            "limits": lim,
             "gate_mm": self.gate_mm,
             "reasons": reasons,
         }

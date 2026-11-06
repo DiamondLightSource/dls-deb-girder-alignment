@@ -1010,7 +1010,7 @@ function renderLive(r){
     const w=Math.min(100,Math.abs(v)/(stop*1.2)*100);
     return `<div class="mrow"><span class="n">${name}</span><span class="v c-${s}">${fmt(v,4)}</span></div>
       <div class="bar-w"><div class="f bg-${s}" style="width:${w}%"></div></div>
-      <div class="mrow"><span class="d">${sub}</span><span class="d">warn ${warn} · stop ${stop}</span></div>`;};
+      <div class="mrow"><span class="d">${sub}</span><span class="d">warn ${fmt(warn,3)} · stop ${fmt(stop,3)}</span></div>`;};
   $('monitors').innerHTML=`
     <div class="mon"><div class="t">Other vertical encoders</div>
       ${others.length?others.map(monRow).join(''):'<div class="mrow"><span class="d">none</span></div>'}</div>

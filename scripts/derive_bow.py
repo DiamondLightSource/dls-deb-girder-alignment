@@ -1,0 +1,167 @@
+#!/usr/bin/env python3
+"""Measure the bare-girder bow from session JSONs and write _bow_data.py.
+
+WHAT THIS DOES. Fits every distinct survey in the given session files
+against the FLAT design nominals (exactly as the tool did before the bow
+was modelled) and takes, per girder type and fiducial, the median fit
+residual vector. Because the bow repeats girder to girder to ~0.01-0.02 mm,
+that median IS the as-built shape - and because a least-squares residual
+carries no rigid-body (or warp) content, the result is referenced to the
+plane through the survey points: adding it to the nominals changes only
+fit residuals, never the fitted pose or the heave target.
+
+The median rather than the mean, so one odd survey (wrong girder type,
+a demo file uploaded by mistake, a knocked fiducial) can't skew the shape.
+Surveys are de-duplicated on their matched coordinates first, so a file
+uploaded twice counts once.
+
+Offsets are written in JACK-FRAME components (x, y, z), so a type built
+to the same fabrication can reuse another's shape (--share SM=MS ML=LM):
+paired types have their fiducials at identical jack-frame positions.
+
+Needs the package (unlike calibrate.py / mirror_reports.py), since it
+refits surveys with the tool's own geometry:
+
+    uv run scripts/derive_bow.py MOVE_LOGS/*.json --share SM=MS ML=LM
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from datetime import UTC, datetime
+from pathlib import Path
+
+import numpy as np
+
+from dls_deb_girder_alignment import geometry as G
+
+OUT = (
+    Path(__file__).resolve().parents[1]
+    / "src"
+    / "dls_deb_girder_alignment"
+    / "_bow_data.py"
+)
+
+
+def distinct_surveys(paths: list[Path]) -> dict[str, list[dict]]:
+    """{gtype: [survey record, ...]} - each matched point set once."""
+    out: dict[str, list[dict]] = {}
+    seen: set[str] = set()
+    for p in paths:
+        sess = json.loads(p.read_text(encoding="utf-8"))
+        if not (isinstance(sess, dict) and "surveys" in sess and "gtype" in sess):
+            continue
+        for sv in sess["surveys"]:
+            key = json.dumps(sv.get("matched"), sort_keys=True)
+            if sv.get("matched") and key not in seen:
+                seen.add(key)
+                out.setdefault(sess["gtype"], []).append(sv)
+    return out
+
+
+def residuals_jack(m: G.Machine, matched: dict) -> dict[str, np.ndarray]:
+    """Per-fiducial fit residual vector, in jack-frame components."""
+    meas = {k: np.asarray(v, float) for k, v in matched.items() if k in m.fids}
+    fit = G.fit_pose(meas, m)
+    v = m.to_master(fit.err)
+    t, th = v[:3], v[3:]
+    warp = fit.err.get("warp", 0.0)
+    out = {}
+    for n, p in meas.items():
+        nom = m.fids[n]
+        shape = m.fea_gain("fids", n) or 0.0
+        pred = nom + t + np.cross(th, nom - m.p0) + np.array([0, shape * warp, 0])
+        r = p - pred
+        out[n] = np.array([r @ m.jx, r @ m.jy, r @ m.jz])
+    return out
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser.add_argument("sessions", nargs="+", type=Path, help="session JSON files")
+    parser.add_argument(
+        "--share",
+        nargs="*",
+        default=[],
+        metavar="TYPE=SOURCE",
+        help="reuse another type's bow, e.g. SM=MS ML=LM (same fabrication)",
+    )
+    parser.add_argument(
+        "--min-surveys",
+        type=int,
+        default=3,
+        help="distinct surveys a type needs before its bow is written (default 3)",
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="print the result, write nothing"
+    )
+    args = parser.parse_args(argv)
+
+    by_type = distinct_surveys(args.sessions)
+    bows: dict[str, dict[str, tuple[float, float, float]]] = {}
+    notes = []
+    for gtype, svs in sorted(by_type.items()):
+        if len(svs) < args.min_surveys:
+            notes.append(f"{gtype}: {len(svs)} survey(s) - too few, not written")
+            continue
+        m = G.Machine(gtype, bow=False)
+        res = [residuals_jack(m, sv["matched"]) for sv in svs]
+        bows[gtype] = {}
+        for n in m.fids:
+            seen = [r[n] for r in res if n in r]
+            if seen:
+                x, y, z = (round(float(c), 4) for c in np.median(seen, 0))
+                bows[gtype][n] = (x, y, z)
+        notes.append(f"{gtype}: median of {len(svs)} distinct surveys")
+
+    source = {t: t for t in bows}
+    for pair in args.share:
+        dst, _, src = pair.partition("=")
+        if src not in bows:
+            print(f"derive_bow: no measured bow for {src} to share", file=sys.stderr)
+            return 1
+        source[dst] = src
+        notes.append(f"{dst}: uses {src}'s bow (same fabrication)")
+
+    revision = datetime.now(UTC).strftime("%Y-%m-%d")
+    lines = [
+        '"""Measured bare-girder bow - AUTO-GENERATED by scripts/derive_bow.py.',
+        "",
+        "Bare girders sag between their bearings under self-weight (~0.3 mm at",
+        "midspan, overhangs rising), identically girder to girder. Offsets are the",
+        "median fit residual against the flat design nominals, in jack-frame",
+        "(x, y, z) mm, referenced to the plane through the fiducials - so they",
+        "change fit residuals only, never the fitted pose. Regenerate rather than",
+        "hand-edit.",
+        "",
+        *[f"{n}." for n in notes],
+        '"""',
+        "",
+        f'BOW_REVISION = "{revision}"',
+        "",
+        f"BOW_SOURCE: dict[str, str] = {json.dumps(source, sort_keys=True)}",
+        "",
+        "BARE_BOW_MM: dict[str, dict[str, tuple[float, float, float]]] = {",
+    ]
+    for gtype, fids in sorted(bows.items()):
+        lines.append(f'    "{gtype}": {{')
+        for n, (x, y, z) in fids.items():
+            lines.append(f'        "{n}": ({x:+.4f}, {y:+.4f}, {z:+.4f}),')
+        lines.append("    },")
+    lines.append("}")
+    text = "\n".join(lines) + "\n"
+
+    if args.dry_run:
+        print(text)
+    else:
+        OUT.write_text(text, encoding="utf-8")
+        print(f"wrote {OUT} ({', '.join(notes)})")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
