@@ -33,7 +33,7 @@ jobs:
         # ubuntu-latest (Ubuntu 26) ships Python 3.14; requires-python is <3.14
         uses: actions/setup-python@v5
         with:
-          python-version: "3.13"
+          python-version: "3.15"
 
       - name: Install produced wheel
         run: python -m pip install dist/*.whl
