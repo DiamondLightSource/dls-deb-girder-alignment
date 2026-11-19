@@ -1,12 +1,11 @@
 [build-system]
-requires = ["setuptools>=64", "setuptools_scm[toml]>=8"]
+requires = ["setuptools>=77.0.3", "setuptools_scm[toml]>=8"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "dls-deb-girder-alignment"
 classifiers = [
-    "Development Status :: 3 - Alpha",
-    "License :: OSI Approved :: Apache Software License",
+    "Development Status :: 5 - Production/Stable",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -30,7 +29,8 @@ dependencies = [
     "waitress",   # production WSGI server; Flask's own is dev-only
 ]
 dynamic = ["version"]
-license.file = "LICENSE"
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 readme = "README.md"
 # Upper bound is cothread: 2.20.1 is its latest release, it classifies no
 # further than 3.12, and on 3.14 `import cothread` is a fatal stack overflow in
@@ -46,7 +46,7 @@ dev = [
     "pytest",
     "pytest-cov",
     "ruff",
-    "tox-uv",
+    "tox-uv-bare",
     "types-mock",
 ]
 
@@ -59,6 +59,10 @@ GitHub = "https://github.com/DiamondLightSource/dls-deb-girder-alignment"
 [[project.authors]] # Further authors may be added by duplicating this section
 email = "lee.hudson@diamond.ac.uk"
 name = "Lee Hudson"
+
+[tool.uv]
+# Minimum uv to fix eMudhra CA cert incident (see discuss.python.org/t/109576)
+required-version = ">=0.13.5"
 
 [tool.setuptools_scm]
 version_file = "src/dls_deb_girder_alignment/_version.py"
@@ -102,6 +106,11 @@ env_list = ["pre-commit", "type-checking", "tests"]
 [tool.tox.env_run_base]
 # Pass all environment variables to the test environments
 passenv = ["*"]
+allowlist_externals = [
+    "pyright",
+    "pytest",
+    "pre-commit",
+]
 
 [tool.tox.env.pre-commit]
 description = "Run pre-commit on all files"
